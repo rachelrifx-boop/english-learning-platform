@@ -1,0 +1,177 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  username     String
+  passwordHash String
+  role         String         @default("USER")
+  inviteCodeId String?
+  inviteCode   InviteCode?    @relation(fields: [inviteCodeId], references: [id])
+  words        Word[]
+  expressions  Expression[]
+  notes        Note[]
+  feedbacks    Feedback[]
+  notifications Notification[]
+  favoriteVideos FavoriteVideo[]
+  userProgress UserProgress[]
+  checkIns     CheckIn[]
+  createdAt    DateTime       @default(now())
+}
+
+model InviteCode {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  maxUses    Int       @default(1)
+  usedCount  Int       @default(0)
+  expiresAt  DateTime? // 过期时间，为null表示永不过期
+  users      User[]
+  createdAt  DateTime  @default(now())
+}
+
+model Video {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  filePath    String
+  coverPath   String?
+  duration    Int             // 秒
+  difficulty  String
+  category    String?
+  subtitles   Subtitle[]
+  words       Word[]
+  expressions Expression[]
+  notes       Note[]
+  favoriteBy  FavoriteVideo[]
+  userProgress UserProgress[]
+  createdAt   DateTime        @default(now())
+}
+
+model Subtitle {
+  id        String   @id @default(cuid())
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  language  String
+  content   String   // JSON string of parsed subtitles
+  filePath  String?
+  createdAt DateTime @default(now())
+
+  @@unique([videoId, language])
+}
+
+model Word {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId             String
+  video               Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  word                String
+  definition          String?
+  translation         String?  // 中文翻译
+  partOfSpeech        String?
+  sentence            String?
+  sentenceTranslation String?  // 例句中文翻译
+  usPhonetic          String?  // 美音音标
+  ukPhonetic          String?  // 英音音标
+  collocations        String?  // 常用搭配词 (JSON字符串)
+  synonyms            String?  // 近义词 (JSON字符串)
+  antonyms            String?  // 反义词 (JSON字符串)
+  timestamp           Float?   // 视频时间戳
+  createdAt           DateTime @default(now())
+}
+
+model Expression {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId     String
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  text        String   // 英文原文
+  translation String   // 中文翻译
+  timestamp   Float    // 视频时间戳
+  createdAt   DateTime @default(now())
+}
+
+model Note {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId      String
+  video        Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  text         String
+  timestamp    Float
+  subtitleText String?
+  createdAt    DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // feedback, bug, feature, other
+  subject   String
+  message   String
+  status    String   @default("pending") // pending, reviewed, resolved
+  replied   Boolean  @default(false)
+  reply     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  type      String   @default("info") // info, warning, success, error
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model FavoriteVideo {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, videoId])
+}
+
+model UserProgress {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId         String
+  video           Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  watchDuration   Int      @default(0) // 观看时长（秒）
+  lastPosition    Float    @default(0) // 最后观看位置（秒）
+  completed       Boolean  @default(false) // 是否完成
+  completedAt     DateTime? // 完成时间
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, videoId])
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime // 打卡日期（使用时间部分为00:00:00）
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+}

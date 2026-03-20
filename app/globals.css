@@ -1,0 +1,349 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #0A0F1E;
+    --foreground: #ffffff;
+  }
+
+  body {
+    @apply bg-primary text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* 白色主题 */
+body.light-theme {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  @apply bg-white text-gray-900;
+}
+
+/* 白色主题覆盖 */
+body.light-theme .bg-primary {
+  background-color: #f9fafb !important;
+}
+
+body.light-theme .bg-surface {
+  background-color: #ffffff !important;
+}
+
+body.light-theme .bg-surface-light {
+  background-color: #f3f4f6 !important;
+}
+
+body.light-theme .text-white {
+  color: #111827 !important;
+}
+
+body.light-theme .text-gray-100,
+body.light-theme .text-gray-200,
+body.light-theme .text-gray-300,
+body.light-theme .text-gray-400 {
+  color: #4b5563 !important;
+}
+
+body.light-theme .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+body.light-theme .border-gray-700,
+body.light-theme .border-gray-800 {
+  border-color: #e5e7eb !important;
+}
+
+body.light-theme .border-gray-600 {
+  border-color: #d1d5db !important;
+}
+
+/* 侧边栏边框 */
+body.light-theme .border-r {
+  border-right-color: #e5e7eb !important;
+}
+
+/* 输入框样式 */
+body.light-theme input,
+body.light-theme textarea {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  color: #111827 !important;
+}
+
+body.light-theme input::placeholder,
+body.light-theme textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+body.light-theme input:focus,
+body.light-theme textarea:focus {
+  border-color: #3b82f6 !important;
+  outline-color: #3b82f6 !important;
+}
+
+/* 强调色样式 */
+body.light-theme .text-accent {
+  color: #2563eb !important;
+}
+
+body.light-theme .text-accent-2 {
+  color: #7c3aed !important;
+}
+
+body.light-theme .bg-accent {
+  background-color: #2563eb !important;
+}
+
+body.light-theme .bg-accent-2 {
+  background-color: #7c3aed !important;
+}
+
+/* 带/20的透明背景需要特殊处理 */
+body.light-theme [class*="bg-accent"][class*="/20"] {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+body.light-theme [class*="bg-accent-2"][class*="/20"] {
+  background-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+@layer utilities {
+  /* 自定义滚动条 - 蓝色样式，更加明显 */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-surface;
+    border-radius: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #3B82F6 !important; /* 蓝色 */
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  body.light-theme .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #2563EB !important; /* 深蓝色 */
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #60A5FA !important; /* 浅蓝色 */
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  body.light-theme .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #3B82F6 !important; /* 蓝色 */
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  /* Firefox 滚动条样式 */
+  .custom-scrollbar {
+    scrollbar-width: thick;
+    scrollbar-color: #3B82F6 #1e293b;
+  }
+
+  body.light-theme .custom-scrollbar {
+    scrollbar-color: #2563EB #f3f4f6;
+  }
+
+  /* 文本截断 */
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  /* 字幕HTML格式样式 */
+  .subtitle-text mark {
+    background-color: rgba(59, 130, 246, 0.2) !important;
+    color: inherit !important;
+    padding: 2px 4px;
+    border-radius: 2px;
+  }
+
+  .subtitle-text u {
+    border-bottom: 2px solid #3B82F6;
+    padding-bottom: 1px;
+    text-decoration: none;
+  }
+
+  /* 同时有下划线和背景高亮的情况 */
+  .subtitle-text u mark,
+  .subtitle-text mark u {
+    border-bottom: 2px solid #3B82F6;
+    background-color: rgba(59, 130, 246, 0.2) !important;
+    padding: 2px 4px;
+    padding-bottom: 1px;
+    text-decoration: none;
+  }
+
+  .subtitle-text b {
+    font-weight: 700;
+  }
+
+  .subtitle-text i {
+    font-style: italic;
+  }
+
+  /* 白色主题下的字幕样式 */
+  body.light-theme .subtitle-text u {
+    border-bottom-color: #2563EB !important;
+  }
+
+  body.light-theme .subtitle-text mark {
+    background-color: rgba(37, 99, 235, 0.15) !important;
+  }
+
+  body.light-theme .subtitle-text u mark,
+  body.light-theme .subtitle-text mark u {
+    border-bottom-color: #2563EB !important;
+    background-color: rgba(37, 99, 235, 0.15) !important;
+  }
+
+  /* 视频播放器 range input 滑块样式 */
+  input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 4px;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+  }
+
+  /* 视频播放器进度条样式 */
+  .video-progress-buffer {
+    width: 100%;
+    height: 4px !important; /* 与音量控制高度一致 */
+    background-color: #D1D5DB; /* bg-gray-300 */
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 1;
+  }
+
+  .video-progress-buffer-fill {
+    background-color: #E5E7EB; /* bg-gray-200 */
+    height: 4px !important; /* 与音量控制高度一致 */
+  }
+
+  .video-progress-slider {
+    height: 4px !important;
+    position: relative;
+    z-index: 2;
+  }
+
+  .video-volume-slider {
+    background-color: #4B5563 !important;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #D1D5DB; /* 浅灰色 */
+    cursor: pointer;
+    border: none;
+    margin-top: -4px; /* (12px - 4px) / 2 = 4px, 确保滑块居中 */
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #D1D5DB; /* 浅灰色 */
+    cursor: pointer;
+    border: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    background: #9CA3AF; /* 悬停时稍深 */
+    transform: scale(1.2);
+    transition: transform 0.1s ease;
+  }
+
+  input[type="range"]::-moz-range-thumb:hover {
+    background: #9CA3AF; /* 悬停时稍深 */
+    transform: scale(1.2);
+    transition: transform 0.1s ease;
+  }
+
+  /* 白色主题下的 range input 样式 */
+  body.light-theme input[type="range"]::-webkit-slider-thumb {
+    background: #9CA3AF !important; /* 灰色 */
+  }
+
+  body.light-theme input[type="range"]::-moz-range-thumb {
+    background: #9CA3AF !important; /* 灰色 */
+  }
+
+  body.light-theme input[type="range"]::-webkit-slider-thumb:hover {
+    background: #6B7280 !important; /* 深灰色 */
+  }
+
+  body.light-theme input[type="range"]::-moz-range-thumb:hover {
+    background: #6B7280 !important; /* 深灰色 */
+  }
+
+  /* 白色主题下的进度条轨道样式 */
+  body.light-theme input[type="range"]::-webkit-slider-runnable-track {
+    background: #D1D5DB !important; /* 浅灰色 */
+  }
+
+  body.light-theme input[type="range"]::-moz-range-track {
+    background: #D1D5DB !important; /* 浅灰色 */
+  }
+
+  /* 白色主题下的视频播放器进度条颜色 */
+  body.light-theme input[type="range"][style*="background"] {
+    background: #D1D5DB !important; /* 浅灰色 */
+  }
+
+  /* 白色主题下的音量控制背景 */
+  body.light-theme input[type="range"].w-12 {
+    background: #D1D5DB !important; /* 浅灰色 */
+  }
+
+  /* 白色主题下的视频播放器进度条样式 */
+  body.light-theme .video-progress-buffer {
+    background-color: #D1D5DB !important; /* bg-gray-300 */
+    height: 4px !important; /* 与音量控制高度一致 */
+  }
+
+  body.light-theme .video-progress-buffer-fill {
+    background-color: #E5E7EB !important; /* bg-gray-200 */
+    height: 4px !important; /* 与音量控制高度一致 */
+  }
+
+  body.light-theme .video-volume-slider {
+    background-color: #D1D5DB !important; /* 浅灰色 */
+  }
+}
