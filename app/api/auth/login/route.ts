@@ -8,6 +8,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { email, password } = body
 
+    // 调试日志
+    console.log('[LOGIN] 登录请求:', { email, timestamp: new Date().toISOString() })
+    console.log('[LOGIN] JWT_SECRET存在:', !!process.env.JWT_SECRET)
+    console.log('[LOGIN] NODE_ENV:', process.env.NODE_ENV)
+    console.log('[LOGIN] DATABASE_URL存在:', !!process.env.DATABASE_URL)
+
     // 验证必填字段
     if (!email || !password) {
       return NextResponse.json(
@@ -22,21 +28,27 @@ export async function POST(request: NextRequest) {
     })
 
     if (!user) {
+      console.log('[LOGIN] 用户不存在')
       return NextResponse.json(
         { success: false, error: '邮箱或密码错误' },
         { status: 401 }
       )
     }
+
+    console.log('[LOGIN] 用户存在:', user.username)
 
     // 验证密码
     const isValid = await verifyPassword(password, user.passwordHash)
 
     if (!isValid) {
+      console.log('[LOGIN] 密码错误')
       return NextResponse.json(
         { success: false, error: '邮箱或密码错误' },
         { status: 401 }
       )
     }
+
+    console.log('[LOGIN] 密码正确，生成token...')
 
     // 签发 JWT
     const token = await signToken({
@@ -44,6 +56,8 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role
     })
+
+    console.log('[LOGIN] Token生成成功，长度:', token.length)
 
     // 设置 httpOnly cookie
     const response = NextResponse.json({
@@ -65,9 +79,10 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 7 // 7 days
     })
 
+    console.log('[LOGIN] 登录成功')
     return response
   } catch (error) {
-    console.error('Login error:', error)
+    console.error('[LOGIN] 错误:', error)
     return NextResponse.json(
       { success: false, error: '登录失败，请稍后重试' },
       { status: 500 }
