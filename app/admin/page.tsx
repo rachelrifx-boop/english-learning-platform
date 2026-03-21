@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles } from 'lucide-react'
+import { uploadFileWithProgress } from '@/lib/supabase-upload'
 
 interface Video {
   id: string
@@ -23,6 +24,8 @@ export default function AdminPage() {
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadStatus, setUploadStatus] = useState('')
   const [showUploadForm, setShowUploadForm] = useState(false)
   const [showApiDialog, setShowApiDialog] = useState(false)
   const [generatingSubtitle, setGeneratingSubtitle] = useState(false)
@@ -75,55 +78,124 @@ export default function AdminPage() {
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!files.video) {
+      alert('请选择视频文件')
+      return
+    }
+
     setUploading(true)
+    setUploadProgress(0)
+    setUploadStatus('正在上传视频到云端...')
 
     try {
-      const formDataToSend = new FormData()
-      formDataToSend.append('title', formData.title)
-      formDataToSend.append('description', formData.description)
-      formDataToSend.append('category', formData.category)
+      // 1. 上传视频文件到Supabase
+      setUploadStatus('正在上传视频...')
+      const videoResult = await uploadFileWithProgress(
+        files.video,
+        'videos',
+        'videos'
+      )
 
-      if (files.video) formDataToSend.append('video', files.video)
-      if (files.cover) formDataToSend.append('cover', files.cover)
-      if (files.englishSubtitle) formDataToSend.append('englishSubtitle', files.englishSubtitle)
-      if (files.chineseSubtitle) formDataToSend.append('chineseSubtitle', files.chineseSubtitle)
-
-      // 添加超时控制（60秒）
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000)
-
-      const response = await fetch('/api/admin/videos', {
-        method: 'POST',
-        body: formDataToSend,
-        signal: controller.signal
-      })
-
-      clearTimeout(timeoutId)
-      const data = await response.json()
-
-      if (!data.success) {
-        alert(data.error || '上传失败')
+      if (videoResult.error || !videoResult.url) {
+        alert(`视频上传失败: ${videoResult.error}`)
         setUploading(false)
         return
       }
 
+      setUploadProgress(33)
+      setUploadStatus('视频上传成功，正在上传封面...')
+
+      // 2. 上传封面（如果有）
+      let coverUrl: string | null = null
+      if (files.cover) {
+        const coverResult = await uploadFileWithProgress(
+          files.cover,
+          'videos',
+          'covers'
+        )
+        if (!coverResult.error && coverResult.url) {
+          coverUrl = coverResult.url
+        }
+      }
+
+      setUploadProgress(50)
+      setUploadStatus('正在上传字幕...')
+
+      // 3. 上传字幕文件
+      let englishSubtitleUrl: string | null = null
+      let chineseSubtitleUrl: string | null = null
+
+      if (files.englishSubtitle) {
+        const enResult = await uploadFileWithProgress(
+          files.englishSubtitle,
+          'videos',
+          'subtitles'
+        )
+        if (!enResult.error && enResult.url) {
+          englishSubtitleUrl = enResult.url
+        }
+      }
+
+      if (files.chineseSubtitle) {
+        const zhResult = await uploadFileWithProgress(
+          files.chineseSubtitle,
+          'videos',
+          'subtitles'
+        )
+        if (!zhResult.error && zhResult.url) {
+          chineseSubtitleUrl = zhResult.url
+        }
+      }
+
+      setUploadProgress(75)
+      setUploadStatus('正在创建视频记录...')
+
+      // 4. 创建视频记录
+      const response = await fetch('/api/admin/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          videoUrl: videoResult.url,
+          coverUrl: coverUrl,
+          englishSubtitleUrl: englishSubtitleUrl,
+          chineseSubtitleUrl: chineseSubtitleUrl,
+          duration: 300, // 默认5分钟，用户可以之后编辑
+          difficulty: 'B1' // 默认难度，有字幕会自动分析
+        })
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        alert(data.error || '创建视频记录失败')
+        setUploading(false)
+        return
+      }
+
+      setUploadProgress(100)
+      setUploadStatus('上传成功！')
+
       // 上传成功
-      alert('上传成功！')
+      alert('视频上传成功！')
 
       // 重置表单
       setFormData({ title: '', description: '', category: '' })
       setFiles({ video: null, cover: null, englishSubtitle: null, chineseSubtitle: null })
       setShowUploadForm(false)
+      setUploadProgress(0)
+      setUploadStatus('')
       fetchVideos()
     } catch (error: any) {
       console.error('上传失败:', error)
-      if (error.name === 'AbortError') {
-        alert('上传超时，请检查网络连接或稍后重试')
-      } else {
-        alert('上传失败：' + (error.message || '请稍后重试'))
-      }
+      alert('上传失败：' + (error.message || '请稍后重试'))
     } finally {
       setUploading(false)
+      setUploadProgress(0)
+      setUploadStatus('')
     }
   }
 
@@ -485,10 +557,22 @@ export default function AdminPage() {
             </div>
 
             {uploading && (
-              <div className="mt-4 p-3 bg-accent/10 border border-accent/30 rounded-lg">
-                <p className="text-sm text-accent flex items-center gap-2">
-                  <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
-                  正在上传视频，请稍候...（大型视频可能需要较长时间）
+              <div className="mt-4 p-4 bg-accent/10 border border-accent/30 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm text-accent flex items-center gap-2">
+                    <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
+                    {uploadStatus || '正在上传...'}
+                  </p>
+                  <span className="text-sm text-accent font-semibold">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-primary transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  大文件上传可能需要几分钟，请勿关闭页面
                 </p>
               </div>
             )}

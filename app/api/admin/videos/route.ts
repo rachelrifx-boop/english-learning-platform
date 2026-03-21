@@ -3,17 +3,6 @@ import { verifyToken } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseSubtitle, mergeSubtitles } from '@/lib/subtitle-parser'
 import { analyzeDifficulty } from '@/lib/difficulty-analyzer'
-import { uploadFile } from '@/lib/supabase'
-
-// 生成唯一文件名
-function generateFilename(originalName: string): string {
-  const timestamp = Date.now()
-  const random = Math.random().toString(36).substring(7)
-  const ext = originalName.includes('.')
-    ? originalName.substring(originalName.lastIndexOf('.'))
-    : ''
-  return `${timestamp}-${random}${ext}`
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,58 +17,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '无权访问' }, { status: 403 })
     }
 
-    const formData = await request.formData()
-    const video = formData.get('video') as File
-    const cover = formData.get('cover') as File | null
-    const englishSubtitle = formData.get('englishSubtitle') as File | null
-    const chineseSubtitle = formData.get('chineseSubtitle') as File | null
-    const title = formData.get('title') as string
-    const description = formData.get('description') as string | null
-    const category = formData.get('category') as string | null
-    const duration = formData.get('duration') as string | null
-    const difficulty = formData.get('difficulty') as string | null
+    const body = await request.json()
+    const {
+      title,
+      description,
+      videoUrl,
+      coverUrl,
+      englishSubtitleUrl,
+      chineseSubtitleUrl,
+      duration,
+      difficulty,
+      category
+    } = body
 
     // 验证必填字段
-    if (!video || !title) {
+    if (!title || !videoUrl) {
       return NextResponse.json(
-        { success: false, error: '请填写所有必填字段' },
+        { success: false, error: '请填写标题和视频URL' },
         { status: 400 }
       )
     }
 
-    // 验证视频文件类型
-    const validVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime']
-    if (!validVideoTypes.includes(video.type)) {
-      return NextResponse.json(
-        { success: false, error: '不支持的视频格式，请使用 MP4、WebM 或 MOV 格式' },
-        { status: 400 }
-      )
-    }
-
-    console.log('[UPLOAD] 开始上传视频:', title)
-
-    // 上传视频文件到Supabase Storage
-    const videoResult = await uploadFile(video, 'videos', 'videos')
-    if (videoResult.error || !videoResult.url) {
-      console.error('[UPLOAD] 视频上传失败:', videoResult.error)
-      return NextResponse.json(
-        { success: false, error: `视频上传失败: ${videoResult.error}` },
-        { status: 500 }
-      )
-    }
-    console.log('[UPLOAD] 视频上传成功:', videoResult.url)
-
-    // 上传封面（如果提供）
-    let coverUrl: string | null = null
-    if (cover && cover.size > 0) {
-      const coverResult = await uploadFile(cover, 'videos', 'covers')
-      if (!coverResult.error && coverResult.url) {
-        coverUrl = coverResult.url
-        console.log('[UPLOAD] 封面上传成功:', coverUrl)
-      } else {
-        console.error('[UPLOAD] 封面上传失败:', coverResult.error)
-      }
-    }
+    console.log('[UPLOAD] 开始创建视频记录:', title)
 
     // 解析时长
     const parsedDuration = duration ? parseInt(duration) : 300
@@ -91,8 +50,8 @@ export async function POST(request: NextRequest) {
         data: {
           title,
           description,
-          filePath: videoResult.url, // 保存Supabase URL
-          coverPath: coverUrl,
+          filePath: videoUrl, // Supabase Storage URL
+          coverPath: coverUrl || null,
           duration: parsedDuration,
           difficulty: (difficulty || 'B1') as any,
           category
@@ -107,64 +66,50 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 处理字幕
-    if (englishSubtitle || chineseSubtitle) {
+    // 处理字幕URL
+    if (englishSubtitleUrl || chineseSubtitleUrl) {
       let englishSegments: any[] = []
       let chineseSegments: any[] = []
 
-      // 解析英文字幕
-      if (englishSubtitle) {
+      // 下载并解析英文字幕
+      if (englishSubtitleUrl) {
         try {
-          const enContent = await englishSubtitle.text()
-          englishSegments = parseSubtitle(enContent, englishSubtitle.name)
-
-          // 上传字幕文件到Supabase Storage
-          const enFilename = generateFilename(englishSubtitle.name)
-          const enBuffer = Buffer.from(await englishSubtitle.arrayBuffer())
-          const enResult = await uploadFile(
-            new File([enBuffer], enFilename, { type: englishSubtitle.type }),
-            'videos',
-            'subtitles'
-          )
+          console.log('[UPLOAD] 下载英文字幕...')
+          const response = await fetch(englishSubtitleUrl)
+          const content = await response.text()
+          englishSegments = parseSubtitle(content, 'english.srt')
 
           await prisma.subtitle.create({
             data: {
               videoId: videoRecord.id,
               language: 'EN',
               content: JSON.stringify(englishSegments),
-              filePath: enResult.url // 保存Supabase URL
+              filePath: englishSubtitleUrl
             }
           })
-          console.log('[UPLOAD] 英文字幕已上传')
+          console.log('[UPLOAD] 英文字幕已保存')
         } catch (error) {
           console.error('[UPLOAD] 处理英文字幕失败:', error)
         }
       }
 
-      // 解析中文字幕
-      if (chineseSubtitle) {
+      // 下载并解析中文字幕
+      if (chineseSubtitleUrl) {
         try {
-          const zhContent = await chineseSubtitle.text()
-          chineseSegments = parseSubtitle(zhContent, chineseSubtitle.name)
-
-          // 上传字幕文件到Supabase Storage
-          const zhFilename = generateFilename(chineseSubtitle.name)
-          const zhBuffer = Buffer.from(await chineseSubtitle.arrayBuffer())
-          const zhResult = await uploadFile(
-            new File([zhBuffer], zhFilename, { type: chineseSubtitle.type }),
-            'videos',
-            'subtitles'
-          )
+          console.log('[UPLOAD] 下载中文字幕...')
+          const response = await fetch(chineseSubtitleUrl)
+          const content = await response.text()
+          chineseSegments = parseSubtitle(content, 'chinese.srt')
 
           await prisma.subtitle.create({
             data: {
               videoId: videoRecord.id,
               language: 'ZH',
               content: JSON.stringify(chineseSegments),
-              filePath: zhResult.url // 保存Supabase URL
+              filePath: chineseSubtitleUrl
             }
           })
-          console.log('[UPLOAD] 中文字幕已上传')
+          console.log('[UPLOAD] 中文字幕已保存')
         } catch (error) {
           console.error('[UPLOAD] 处理中文字幕失败:', error)
         }
@@ -173,7 +118,6 @@ export async function POST(request: NextRequest) {
       // 如果两种字幕都有，创建合并版本
       if (englishSegments.length > 0 && chineseSegments.length > 0) {
         const merged = mergeSubtitles(englishSegments, chineseSegments)
-        // 更新英文字幕为合并版本
         await prisma.subtitle.updateMany({
           where: { videoId: videoRecord.id, language: 'EN' },
           data: { content: JSON.stringify(merged) }
@@ -190,7 +134,6 @@ export async function POST(request: NextRequest) {
           console.log(`[UPLOAD] 难度分析结果: ${difficultyResult.level}`)
           console.log(`[UPLOAD] 置信度: ${difficultyResult.confidence}`)
 
-          // 更新视频难度
           await prisma.video.update({
             where: { id: videoRecord.id },
             data: { difficulty: difficultyResult.level }
@@ -211,7 +154,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[UPLOAD] Error:', error)
     return NextResponse.json(
-      { success: false, error: '上传失败，请稍后重试' },
+      { success: false, error: '创建视频失败，请稍后重试' },
       { status: 500 }
     )
   }
