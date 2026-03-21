@@ -28,6 +28,7 @@ export function DictationMode({ sentence, translation, onPlay, onComplete }: Dic
   }, [sentence])
 
   const normalizeText = (text: string) => {
+    if (!text) return ''
     return text
       .toLowerCase()
       .replace(/[^\w\s']/g, '')

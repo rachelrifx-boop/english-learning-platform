@@ -79,7 +79,7 @@ export function WordDefinitionPopup({ word, onClose, onSave, isSaved = false }: 
 
     try {
       // 先查本地缓存
-      const cacheKey = `word_def_${word.toLowerCase()}`
+      const cacheKey = `word_def_${word ? word.toLowerCase() : ''}`
       const cached = localStorage.getItem(cacheKey)
 
       if (cached) {
@@ -99,7 +99,7 @@ export function WordDefinitionPopup({ word, onClose, onSave, isSaved = false }: 
 
       const data = await response.json()
 
-      if (data && data.length > 0) {
+      if (data && Array.isArray(data) && data.length > 0) {
         const entry = data[0]
         const phonetic = entry.phonetics?.find((p: any) => p.text)?.text || entry.phonetic || ''
         const meaning = entry.meanings?.[0]
@@ -325,7 +325,7 @@ export function ClickableWordHighlight({ text, onWordClick, savedWords, isActive
     return words.map((word, index) => {
       const cleanWord = word.replace(/[.,!?;:"'()]/g, '')
       const isWord = /^[a-zA-Z]+$/.test(cleanWord)
-      const isSaved = savedWords?.has(cleanWord.toLowerCase())
+      const isSaved = cleanWord ? savedWords?.has(cleanWord.toLowerCase()) : false
 
       if (!isWord) {
         return <span key={index}>{word}</span>
@@ -361,7 +361,7 @@ export function ClickableWordHighlight({ text, onWordClick, savedWords, isActive
           word={popupWord}
           onClose={() => setPopupWord(null)}
           onSave={handleSave}
-          isSaved={savedWords?.has(popupWord.toLowerCase())}
+          isSaved={popupWord ? savedWords?.has(popupWord.toLowerCase()) : false}
         />
       )}
     </>

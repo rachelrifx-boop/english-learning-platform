@@ -144,7 +144,7 @@ export function EnhancedSubtitleHighlight({
 
       onHighlightInfoChange(mergedHighlights)
     }
-  }, [text, onHighlightInfoChange])
+  }, [text])
 
   const handleWordClick = (word: string) => {
     if (onWordClick) {
@@ -305,7 +305,7 @@ export function EnhancedSubtitleHighlight({
     words.forEach((word, index) => {
       const cleanWord = word.replace(/[.,!?;:"'()]/g, '')
       const isWord = /^[a-zA-Z]+$/.test(cleanWord)
-      const isSaved = savedWords?.has(cleanWord.toLowerCase())
+      const isSaved = cleanWord ? savedWords?.has(cleanWord.toLowerCase()) : false
 
       if (!isWord) {
         result.push(<span key={`${prefix}-${index}-${word}`}>{word}</span>)

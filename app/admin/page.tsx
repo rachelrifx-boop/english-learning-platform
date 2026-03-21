@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle } from 'lucide-react'
+import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles } from 'lucide-react'
 
 interface Video {
   id: string
@@ -32,12 +32,12 @@ export default function AdminPage() {
   const [modelSize, setModelSize] = useState<'tiny' | 'base' | 'small' | 'medium' | 'large-v3'>('small')
   const [editingVideo, setEditingVideo] = useState<Video | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [analyzingDifficulty, setAnalyzingDifficulty] = useState(false)
 
   // 上传表单状态
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    difficulty: 'B1',
     category: ''
   })
   const [files, setFiles] = useState({
@@ -81,7 +81,6 @@ export default function AdminPage() {
       const formDataToSend = new FormData()
       formDataToSend.append('title', formData.title)
       formDataToSend.append('description', formData.description)
-      formDataToSend.append('difficulty', formData.difficulty)
       formDataToSend.append('category', formData.category)
 
       if (files.video) formDataToSend.append('video', files.video)
@@ -112,7 +111,7 @@ export default function AdminPage() {
       alert('上传成功！')
 
       // 重置表单
-      setFormData({ title: '', description: '', difficulty: 'B1', category: '' })
+      setFormData({ title: '', description: '', category: '' })
       setFiles({ video: null, cover: null, englishSubtitle: null, chineseSubtitle: null })
       setShowUploadForm(false)
       fetchVideos()
@@ -282,6 +281,50 @@ export default function AdminPage() {
     }
   }
 
+  const handleAnalyzeDifficulty = async () => {
+    if (!editingVideo) return
+
+    setAnalyzingDifficulty(true)
+
+    try {
+      const response = await fetch('/api/admin/analyze-difficulty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: editingVideo.id })
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        alert(data.error || '分析失败')
+        return
+      }
+
+      const { level, confidence, details, previousLevel } = data.data
+
+      // 更新编辑表单中的难度
+      setEditFormData(prev => ({ ...prev, difficulty: level }))
+
+      // 显示分析结果
+      const resultMessage = `难度分析完成！\n\n` +
+        `原难度: ${previousLevel}\n` +
+        `新难度: ${level}\n` +
+        `置信度: ${(confidence * 100).toFixed(0)}%\n\n` +
+        `详细评分：\n` +
+        `词汇难度: ${(details.vocabularyScore * 100).toFixed(0)}分\n` +
+        `句子复杂度: ${(details.sentenceScore * 100).toFixed(0)}分\n` +
+        `语速难度: ${(details.speedScore * 100).toFixed(0)}分\n` +
+        `时长难度: ${(details.durationScore * 100).toFixed(0)}分`
+
+      alert(resultMessage)
+    } catch (error: any) {
+      console.error('分析难度失败:', error)
+      alert('分析难度失败：' + (error.message || '请稍后重试'))
+    } finally {
+      setAnalyzingDifficulty(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -305,6 +348,13 @@ export default function AdminPage() {
         <div className="bg-surface-light rounded-xl p-6 mb-8 animate-slide-up">
           <h2 className="text-xl font-heading font-semibold text-white mb-4">上传新视频</h2>
           <form onSubmit={handleUpload} className="space-y-4">
+            <div className="mb-4 p-3 bg-accent/10 border border-accent/30 rounded-lg">
+              <p className="text-sm text-accent flex items-center gap-2">
+                <Sparkles size={16} />
+                <span>系统会根据英文字幕自动识别难度等级（A1-C2）</span>
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -321,33 +371,29 @@ export default function AdminPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  难度等级 *
-                </label>
-                <select
-                  value={formData.difficulty}
-                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                  className="w-full px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
-                >
-                  <option value="A1">A1 - 入门</option>
-                  <option value="A2">A2 - 基础</option>
-                  <option value="B1">B1 - 进阶</option>
-                  <option value="B2">B2 - 中级</option>
-                  <option value="C1">C1 - 高级</option>
-                  <option value="C2">C2 - 精通</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
                   分类
                 </label>
-                <input
-                  type="text"
+                <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   className="w-full px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
-                  placeholder="例如：日常对话、商务英语"
-                />
+                >
+                  <option value="">选择分类（可选）</option>
+                  <option value="Personal Development">个人成长</option>
+                  <option value="Social Skills">社交技巧</option>
+                  <option value="Communication">沟通技巧</option>
+                  <option value="Daily Life">日常生活</option>
+                  <option value="Health & Fitness">健康健身</option>
+                  <option value="Business">商务</option>
+                  <option value="Career">职业发展</option>
+                  <option value="Technology">科技</option>
+                  <option value="Education">教育</option>
+                  <option value="Science">科学</option>
+                  <option value="Entertainment">娱乐</option>
+                  <option value="Culture">文化</option>
+                  <option value="Travel">旅行</option>
+                  <option value="Food & Cooking">美食烹饪</option>
+                </select>
               </div>
 
               <div>
@@ -749,31 +795,60 @@ export default function AdminPage() {
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     难度等级 *
                   </label>
-                  <select
-                    value={editFormData.difficulty}
-                    onChange={(e) => setEditFormData({ ...editFormData, difficulty: e.target.value })}
-                    className="w-full px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
-                  >
-                    <option value="A1">A1 - 入门</option>
-                    <option value="A2">A2 - 基础</option>
-                    <option value="B1">B1 - 进阶</option>
-                    <option value="B2">B2 - 中级</option>
-                    <option value="C1">C1 - 高级</option>
-                    <option value="C2">C2 - 精通</option>
-                  </select>
+                  <div className="flex gap-2">
+                    <select
+                      value={editFormData.difficulty}
+                      onChange={(e) => setEditFormData({ ...editFormData, difficulty: e.target.value })}
+                      className="flex-1 px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
+                    >
+                      <option value="A1">A1 - 入门</option>
+                      <option value="A2">A2 - 基础</option>
+                      <option value="B1">B1 - 进阶</option>
+                      <option value="B2">B2 - 中级</option>
+                      <option value="C1">C1 - 高级</option>
+                      <option value="C2">C2 - 精通</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeDifficulty}
+                      disabled={analyzingDifficulty || !editingVideo?.subtitles || editingVideo.subtitles.length === 0}
+                      className="px-3 py-2 bg-gradient-primary text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center gap-2"
+                      title="根据字幕内容自动分析难度"
+                    >
+                      <Sparkles size={16} />
+                      {analyzingDifficulty ? '分析中...' : '自动识别'}
+                    </button>
+                  </div>
+                  {(!editingVideo?.subtitles || editingVideo.subtitles.length === 0) && (
+                    <p className="text-xs text-gray-500 mt-1">⚠️ 需要先上传字幕才能自动识别难度</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     分类
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={editFormData.category}
                     onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
                     className="w-full px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
-                    placeholder="例如：日常对话、商务英语"
-                  />
+                  >
+                    <option value="">选择分类（可选）</option>
+                    <option value="Personal Development">个人成长</option>
+                    <option value="Social Skills">社交技巧</option>
+                    <option value="Communication">沟通技巧</option>
+                    <option value="Daily Life">日常生活</option>
+                    <option value="Health & Fitness">健康健身</option>
+                    <option value="Business">商务</option>
+                    <option value="Career">职业发展</option>
+                    <option value="Technology">科技</option>
+                    <option value="Education">教育</option>
+                    <option value="Science">科学</option>
+                    <option value="Entertainment">娱乐</option>
+                    <option value="Culture">文化</option>
+                    <option value="Travel">旅行</option>
+                    <option value="Food & Cooking">美食烹饪</option>
+                  </select>
                 </div>
               </div>
 

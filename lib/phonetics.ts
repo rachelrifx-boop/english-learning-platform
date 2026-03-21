@@ -55,6 +55,7 @@ export async function generateSentencePhonetics(sentence: string): Promise<Sente
   const wordPhonetics: Array<{ word: string; ipa: string }> = []
 
   for (const word of words) {
+    if (!word) continue
     const ipa = await getWordPhonetic(word.toLowerCase())
     wordPhonetics.push({
       word,
@@ -725,6 +726,7 @@ export function getQuickSentencePhonetics(sentence: string): SentencePhonetics {
   const wordPhonetics: Array<{ word: string; ipa: string }> = []
 
   for (const word of words) {
+    if (!word) continue
     const lowerWord = word.toLowerCase()
     const ipa = commonPhonetics[lowerWord] || ''
     wordPhonetics.push({

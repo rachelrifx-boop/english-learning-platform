@@ -68,6 +68,153 @@ const wordCache = new LRUCache<string, DictionaryEntry>(500)
 const notFoundCache = new Set<string>()
 
 /**
+ * 简单的词形还原（Lemmatization）
+ * 将复数、过去式等变形词转换为原形
+ * 支持多级还原（如 concealers → concealer → conceal）
+ */
+function getLemma(word: string): string | null {
+  // 常见的复数后缀
+  const pluralSuffixes = [
+    { suffix: 'ses', replace: 's' },     // classes → class
+    { suffix: 'ves', replace: 'f' },     // wolves → wolf
+    { suffix: 'ves', replace: 'fe' },    // knives → knife
+    { suffix: 'ies', replace: 'y' },     // babies → baby
+    { suffix: 'es', replace: '' },      // watches → watch
+    { suffix: 's', replace: '' }         // books → book
+  ]
+
+  // 常见的动词后缀
+  const verbSuffixes = [
+    { suffix: 'ied', replace: 'y' },     // cried → cry
+    { suffix: 'ies', replace: 'y' },     // tries → try
+    { suffix: 'ing', replace: 'e' },     // making → make
+    { suffix: 'ing', replace: '' },      // eating → eat
+    { suffix: 'ed', replace: 'e' },      // baked → bake
+    { suffix: 'ed', replace: '' },       // played → play
+    { suffix: 'es', replace: '' },       // goes → go
+  ]
+
+  // 尝试复数还原
+  for (const { suffix, replace } of pluralSuffixes) {
+    if (word.endsWith(suffix) && word.length > suffix.length + 2) {
+      const lemma = word.slice(0, -suffix.length) + replace
+      return lemma
+    }
+  }
+
+  // 尝试动词还原
+  for (const { suffix, replace } of verbSuffixes) {
+    if (word.endsWith(suffix) && word.length > suffix.length + 2) {
+      const lemma = word.slice(0, -suffix.length) + replace
+      return lemma
+    }
+  }
+
+  // 双写辅音结尾（如 running → run）
+  if (word.length > 5 && word.match(/([a-z])\1ing$/)) {
+    const lemma = word.slice(0, -4) // 去掉 'ing'
+    if (lemma.length > 2) {
+      return lemma
+    }
+  }
+
+  // ly 结尾的副词转形容词
+  if (word.endsWith('ly') && word.length > 4) {
+    const lemma = word.slice(0, -2)
+    if (lemma.length > 2) {
+      return lemma
+    }
+  }
+
+  // er 结尾转动词
+  if (word.endsWith('er') && word.length > 4) {
+    const lemma = word.slice(0, -2)
+    if (lemma.length > 2) {
+      return lemma
+    }
+  }
+
+  return null
+}
+
+/**
+ * 获取单词的原形（支持多级还原）
+ */
+function getWordLemma(word: string): string | null {
+  let currentWord = word
+  let maxIterations = 3 // 最多还原3次
+
+  for (let i = 0; i < maxIterations; i++) {
+    const lemma = getLemma(currentWord)
+    if (!lemma) {
+      break
+    }
+    currentWord = lemma
+  }
+
+  return currentWord !== word ? currentWord : null
+}
+
+/**
+ * 激进的词形还原（处理更复杂的情况）
+ * 如：concealer → conceal, teacher → teach, runner → run
+ */
+function getAggressiveLemma(word: string): string | null {
+  // -er 结尾的词，可能是动词+er（表示动作执行者）
+  if (word.endsWith('er') && word.length > 5) {
+    const base = word.slice(0, -2)
+    // 如果以双写辅音+er结尾（如 runner）
+    if (base.length > 3 && base[base.length - 1] === base[base.length - 2]) {
+      return base.slice(0, -1) // runner → run
+    }
+    // 否则直接去掉er（如 concealer → conceal）
+    return base
+  }
+
+  // -or 结尾的词（比较级）
+  if (word.endsWith('or') && word.length > 5) {
+    return word.slice(0, -2)
+  }
+
+  // -est 结尾的词（最高级）
+  if (word.endsWith('est') && word.length > 6) {
+    return word.slice(0, -3)
+  }
+
+  // -ness 结尾（形容词转名词）
+  if (word.endsWith('ness') && word.length > 6) {
+    return word.slice(0, -4)
+  }
+
+  // -ment 结尾
+  if (word.endsWith('ment') && word.length > 6) {
+    return word.slice(0, -4)
+  }
+
+  // -tion 结尾
+  if (word.endsWith('tion') && word.length > 6) {
+    return word.slice(0, -4) + 'e'
+  }
+
+  // -able 结尾
+  if (word.endsWith('able') && word.length > 6) {
+    return word.slice(0, -4)
+  }
+
+  // -ive 结尾
+  if (word.endsWith('ive') && word.length > 6) {
+    return word.slice(0, -3) + 'e'
+  }
+
+  // -al 结尾
+  if (word.endsWith('al') && word.length > 5) {
+    return word.slice(0, -2)
+  }
+
+  return null
+}
+
+/**
  * 带超时的fetch
  */
 async function fetchWithTimeout(url: string, timeout = 5000): Promise<Response> {
@@ -301,6 +448,7 @@ async function lookupWordFromIciba(word: string): Promise<{ translation: string;
  * 优化：添加缓存和超时控制，优先使用DictionaryAPI.dev获取完整信息
  */
 export async function lookupWord(word: string): Promise<DictionaryEntry | null> {
+  if (!word) return null
   const normalizedWord = word.toLowerCase().trim()
 
   // 检查不存在的单词缓存
@@ -318,9 +466,58 @@ export async function lookupWord(word: string): Promise<DictionaryEntry | null> 
   // 这个API是免费的，无需认证，且应该在国内网络环境下可访问
   let result = await lookupWordFromXXAPI(normalizedWord)
 
+  // 如果找不到，尝试词形还原（复数→单数，过去式→原形等）
+  if (!result) {
+    const lemma = getWordLemma(normalizedWord)
+    if (lemma && lemma !== normalizedWord) {
+      console.log(`词形还原: ${normalizedWord} → ${lemma}`)
+      result = await lookupWordFromXXAPI(lemma)
+
+      // 如果找到原形，将单词名替换为原形
+      if (result) {
+        result.word = normalizedWord // 保持用户输入的形式作为显示
+      }
+    }
+  }
+
+  // 如果还原后还是找不到，尝试更激进的还原（如 -er 结尾）
+  if (!result) {
+    const aggressiveLemma = getAggressiveLemma(normalizedWord)
+    if (aggressiveLemma && aggressiveLemma !== normalizedWord) {
+      console.log(`激进还原: ${normalizedWord} → ${aggressiveLemma}`)
+      result = await lookupWordFromXXAPI(aggressiveLemma)
+
+      if (result) {
+        result.word = normalizedWord
+      }
+    }
+  }
+
   // 如果xxapi.cn失败，尝试 DictionaryAPI.dev
   if (!result) {
     result = await lookupWordFromDictionaryAPI(normalizedWord)
+
+    // DictionaryAPI.dev 成功但缺少中文翻译，从金山词霸补充
+    if (result) {
+      const icibaData = await lookupWordFromIciba(normalizedWord)
+      if (icibaData) {
+        // 合并中文翻译到现有释义中
+        result.meanings.forEach(meaning => {
+          // 为每个定义添加中文释义（如果有）
+          if (meaning.definitions[0] && icibaData.translation) {
+            const currentDef = meaning.definitions[0].definition || ''
+            // 如果当前定义是英文或"No definition found"，添加中文
+            if (!currentDef.includes('暂无') && currentDef !== 'No definition found') {
+              // 英文释义存在，在前面添加中文
+              meaning.definitions[0].definition = `${icibaData.translation} | ${currentDef}`
+            } else {
+              // 只有中文
+              meaning.definitions[0].definition = icibaData.translation
+            }
+          }
+        })
+      }
+    }
   }
 
   // 如果DictionaryAPI.dev也失败，尝试从金山词霸获取中文释义作为补充
@@ -363,6 +560,29 @@ export async function lookupWord(word: string): Promise<DictionaryEntry | null> 
         word: normalizedWord,
         meanings
       }
+    }
+  }
+
+  // 最后的备选方案：如果仍然没有音标，尝试使用免费的音标API
+  if (result && (!result.usPhonetic && !result.ukPhonetic && !result.phonetic)) {
+    try {
+      // 使用 wordsapi 获取音标（不需要认证，有免费额度）
+      const phoneticResponse = await fetchWithTimeout(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${normalizedWord}`,
+        3000
+      )
+      if (phoneticResponse.ok) {
+        const phoneticData = await phoneticResponse.json()
+        if (phoneticData && phoneticData[0]) {
+          const entry = phoneticData[0]
+          result.phonetic = entry.phonetic || entry.phonetics?.find((p: any) => p.text)?.text
+          result.usPhonetic = result.phonetic
+          result.ukPhonetic = result.phonetic
+        }
+      }
+    } catch (error) {
+      // 忽略音标API错误，至少我们有了释义
+      console.log('获取音标失败，忽略:', normalizedWord)
     }
   }
 
@@ -503,6 +723,7 @@ async function lookupWordFromDictionaryAPI(word: string): Promise<DictionaryEntr
  * 基于词性和单词特征生成常见的搭配词
  */
 function generateCollocations(word: string, meanings: any[]): string[] {
+  if (!word) return []
   const collocations: string[] = []
   const lowerWord = word.toLowerCase()
 
@@ -532,6 +753,7 @@ function generateCollocations(word: string, meanings: any[]): string[] {
 
   // 根据词性添加合理的搭配
   for (const meaning of meanings) {
+    if (!meaning.partOfSpeech) continue
     const pos = meaning.partOfSpeech.toLowerCase()
 
     // 名词搭配

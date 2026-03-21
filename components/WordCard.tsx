@@ -155,15 +155,19 @@ export function WordCard({ word, entry, loading, error, onSave, isSaved, onClose
   }
 
   // 收集所有近义词和反义词（去重）
-  const allSynonyms = Array.from(new Set(entry.meanings.flatMap(m => m.synonyms || []))).slice(0, 10)
-  const allAntonyms = Array.from(new Set(entry.meanings.flatMap(m => m.antonyms || []))).slice(0, 10)
+  const allSynonyms = entry.meanings && entry.meanings.length > 0
+    ? Array.from(new Set(entry.meanings.flatMap(m => m.synonyms || []))).slice(0, 10)
+    : []
+  const allAntonyms = entry.meanings && entry.meanings.length > 0
+    ? Array.from(new Set(entry.meanings.flatMap(m => m.antonyms || []))).slice(0, 10)
+    : []
 
   // 确定显示的音标（优先使用API返回的，回退到通用音标）
   const usPhonetic = entry.usPhonetic || entry.phonetic
   const ukPhonetic = entry.ukPhonetic || entry.phonetic
 
   // 检查是否是回退条目（没有详细信息）
-  const isFallbackEntry = entry.meanings.length === 1 &&
+  const isFallbackEntry = entry.meanings && entry.meanings.length === 1 &&
                           entry.meanings[0].partOfSpeech === 'unknown' &&
                           entry.meanings[0].definitions[0]?.definition === '暂无详细释义，请查看中文翻译'
 
@@ -317,7 +321,7 @@ export function WordCard({ word, entry, loading, error, onSave, isSaved, onClose
             )}
 
             {/* === 词义、例句、近义词、反义词 === */}
-            {entry.meanings.map((meaning, mIndex) => (
+            {entry.meanings && entry.meanings.length > 0 && entry.meanings.map((meaning, mIndex) => (
               <div key={mIndex} className="space-y-3">
                 {/* 词性标签 */}
                 <div className="flex items-center gap-2">

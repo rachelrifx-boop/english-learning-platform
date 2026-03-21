@@ -111,14 +111,14 @@ export function DictationPanel({ subtitle, allSubtitles, onClose, onNextSentence
       .replace(/[.,!?;:"'()]/g, '')
       .split(/\s+/)
       .filter(w => w.length > 0)
-      .map(w => w.toLowerCase())
+      .map(w => w ? w.toLowerCase() : '')
 
     const results: WordResult[] = []
     let correctCount = 0
 
     correctWords.forEach((word, index) => {
-      const userWord = userWords[index]?.toLowerCase()
-      const isCorrect = userWord === word.toLowerCase()
+      const userWord = userWords[index] ? userWords[index].toLowerCase() : ''
+      const isCorrect = userWord === (word ? word.toLowerCase() : '')
 
       if (isCorrect) correctCount++
 
@@ -147,6 +147,8 @@ export function DictationPanel({ subtitle, allSubtitles, onClose, onNextSentence
 
   // 下一句
   const handleNext = () => {
+    if (!allSubtitles || allSubtitles.length === 0) return
+
     const currentIndex = allSubtitles.findIndex(s => s.id === currentSubtitle.id)
     const nextIndex = currentIndex + 1
 
@@ -366,7 +368,7 @@ export function DictationPanel({ subtitle, allSubtitles, onClose, onNextSentence
 
       {/* 当前句子序号 */}
       <div className="text-center text-gray-500 text-xs">
-        句子 {allSubtitles.findIndex(s => s.id === currentSubtitle.id) + 1} / {allSubtitles.length}
+        句子 {allSubtitles && allSubtitles.length > 0 ? allSubtitles.findIndex(s => s.id === currentSubtitle.id) + 1 : 0} / {allSubtitles?.length || 0}
       </div>
     </div>
   )

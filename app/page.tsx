@@ -45,9 +45,39 @@ export default function HomePage() {
     { label: '10-20分钟', value: '10-20' },
     { label: '20分钟以上', value: '20+' }
   ]
-  const categoryList = ['Vlog', 'Interview', 'Presentation', 'Conversation', 'Documentary']
+  const categoryList = [
+    'Personal Development',
+    'Social Skills',
+    'Communication',
+    'Daily Life',
+    'Health & Fitness',
+    'Business',
+    'Career',
+    'Technology',
+    'Education',
+    'Science',
+    'Entertainment',
+    'Culture',
+    'Travel',
+    'Food & Cooking'
+  ]
 
   const categoryTranslations: Record<string, string> = {
+    'Personal Development': '个人成长',
+    'Social Skills': '社交技巧',
+    'Communication': '沟通技巧',
+    'Daily Life': '日常生活',
+    'Health & Fitness': '健康健身',
+    'Business': '商务',
+    'Career': '职业发展',
+    'Technology': '科技',
+    'Education': '教育',
+    'Science': '科学',
+    'Entertainment': '娱乐',
+    'Culture': '文化',
+    'Travel': '旅行',
+    'Food & Cooking': '美食烹饪',
+    // 兼容旧分类
     'Vlog': '视频博客',
     'Interview': '访谈',
     'Presentation': '演讲',
@@ -89,31 +119,13 @@ export default function HomePage() {
       if (data.success) {
         setVideos(data.data.videos)
         setCategories(data.data.categories || [])
-        // 获取总课程数（不分页的总数）
-        if (data.data.totalCount !== undefined) {
-          setTotalCourses(data.data.totalCount)
-        } else {
-          // 如果API没有返回totalCount，使用当前筛选结果的长度
-          // 同时获取不带筛选的总数
-          fetchTotalCourses()
-        }
+        // 使用当前筛选结果的长度作为总课程数
+        setTotalCourses(data.data.videos.length)
       }
     } catch (error) {
       console.error('获取视频列表失败:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchTotalCourses = async () => {
-    try {
-      const response = await fetch('/api/videos')
-      const data = await response.json()
-      if (data.success && data.data.videos) {
-        setTotalCourses(data.data.videos.length)
-      }
-    } catch (error) {
-      console.error('获取总课程数失败:', error)
     }
   }
 

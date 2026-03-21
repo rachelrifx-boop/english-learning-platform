@@ -140,7 +140,7 @@ export function SubtitleWordHighlight({ text, onWordSave, savedWords = new Set()
     }
   }, [wordEntry, selectedWord, onWordSave])
 
-  const isSaved = !!selectedWord && savedWords.has(selectedWord.toLowerCase())
+  const isSaved = selectedWord ? savedWords.has(selectedWord.toLowerCase()) : false
 
   // 点击外部关闭卡片
   useEffect(() => {

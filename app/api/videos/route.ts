@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const difficulty = searchParams.get('difficulty')
     const category = searchParams.get('category')
+    const duration = searchParams.get('duration')
 
     const where: any = {}
     if (difficulty) {
@@ -14,6 +15,19 @@ export async function GET(request: NextRequest) {
     }
     if (category) {
       where.category = category
+    }
+
+    // 处理时长筛选（duration字段单位是秒）
+    if (duration) {
+      if (duration === '0-5') {
+        where.duration = { gte: 0, lte: 300 } // 0-5分钟
+      } else if (duration === '5-10') {
+        where.duration = { gt: 300, lte: 600 } // 5-10分钟
+      } else if (duration === '10-20') {
+        where.duration = { gt: 600, lte: 1200 } // 10-20分钟
+      } else if (duration === '20+') {
+        where.duration = { gt: 1200 } // 20分钟以上
+      }
     }
 
     const videos = await prisma.video.findMany({

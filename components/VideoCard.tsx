@@ -30,6 +30,29 @@ const difficultyColors: Record<string, string> = {
   C2: 'bg-purple-500/20 text-purple-500'
 }
 
+const categoryTranslations: Record<string, string> = {
+  'Personal Development': '个人成长',
+  'Social Skills': '社交技巧',
+  'Communication': '沟通技巧',
+  'Daily Life': '日常生活',
+  'Health & Fitness': '健康健身',
+  'Business': '商务',
+  'Career': '职业发展',
+  'Technology': '科技',
+  'Education': '教育',
+  'Science': '科学',
+  'Entertainment': '娱乐',
+  'Culture': '文化',
+  'Travel': '旅行',
+  'Food & Cooking': '美食烹饪',
+  // 兼容旧分类
+  'Vlog': '视频博客',
+  'Interview': '访谈',
+  'Presentation': '演讲',
+  'Conversation': '对话',
+  'Documentary': '纪录片'
+}
+
 export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps) {
   const [isFavorited, setIsFavorited] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -172,7 +195,7 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
               </span>
               {video.category && (
                 <span className="px-2 py-1 bg-surface text-gray-400 rounded text-xs">
-                  {video.category}
+                  {categoryTranslations[video.category] || video.category}
                 </span>
               )}
             </div>

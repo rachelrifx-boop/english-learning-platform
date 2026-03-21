@@ -53,16 +53,18 @@ export async function POST(request: NextRequest) {
     const chineseSubtitle = formData.get('chineseSubtitle') as File | null
     const title = formData.get('title') as string
     const description = formData.get('description') as string | null
-    const difficulty = formData.get('difficulty') as string
     const category = formData.get('category') as string | null
 
     // 验证必填字段
-    if (!video || !title || !difficulty) {
+    if (!video || !title) {
       return NextResponse.json(
         { success: false, error: '请填写所有必填字段' },
         { status: 400 }
       )
     }
+
+    // 难度将自动分析，设置默认值
+    let difficulty = 'B1' // 默认值，如果有英文字幕会被自动分析覆盖
 
     // 验证视频文件
     if (!isValidVideoFile(video.name)) {

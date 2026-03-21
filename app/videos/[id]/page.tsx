@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { VideoPlayer, VideoPlayerRef } from '@/components/VideoPlayer'
 import { SubtitlePanel, SubtitleEntry } from '@/components/SubtitlePanel'
 import { SubtitleWordHighlight } from '@/components/SubtitleWordHighlight'
@@ -12,12 +12,35 @@ import { ColorHighlight } from '@/components/ColorHighlight'
 import { ClickableWordHighlight } from '@/components/WordDefinitionPopup'
 import { WordCard, DictionaryEntry } from '@/components/WordCard'
 import { ArrowLeft, Clock, BookOpen, Printer, Mic, Star, Repeat, Repeat1, FileText, Book, Volume2, PenTool, Languages, Brain, Eye, EyeOff, Plus, Minus, Headphones, CreditCard, ChevronDown, Play, Pause, SkipBack, SkipForward } from 'lucide-react'
-import Link from 'next/link'
+
+const categoryTranslations: Record<string, string> = {
+  'Personal Development': '个人成长',
+  'Social Skills': '社交技巧',
+  'Communication': '沟通技巧',
+  'Daily Life': '日常生活',
+  'Health & Fitness': '健康健身',
+  'Business': '商务',
+  'Career': '职业发展',
+  'Technology': '科技',
+  'Education': '教育',
+  'Science': '科学',
+  'Entertainment': '娱乐',
+  'Culture': '文化',
+  'Travel': '旅行',
+  'Food & Cooking': '美食烹饪',
+  // 兼容旧分类
+  'Vlog': '视频博客',
+  'Interview': '访谈',
+  'Presentation': '演讲',
+  'Conversation': '对话',
+  'Documentary': '纪录片'
+}
 
 type SubtitleMode = 'bilingual' | 'en' | 'zh'
 
 export default function VideoPage() {
   const params = useParams()
+  const router = useRouter()
   const videoId = params.id as string
 
   const [video, setVideo] = useState<any>(null)
@@ -147,31 +170,35 @@ export default function VideoPage() {
         const zhSubtitle = data.data.video.subtitles?.find((s: any) => s.language === 'ZH')
 
         if (enSubtitle && Array.isArray(enSubtitle.content)) {
-          // 检查字幕格式
-          const firstSubtitle = enSubtitle.content[0]
+          // 处理混合格式的字幕（有些是对象，有些是字符串）
+          const processed = enSubtitle.content
+            .filter((s: any) => s.text && (typeof s.text === 'object' || (typeof s.text === 'string' && s.text.trim())))
+            .map((enSub: any) => {
+              // 如果已经是新格式（对象），直接使用
+              if (typeof enSub.text === 'object') {
+                return enSub
+              }
 
-          if (firstSubtitle && typeof firstSubtitle.text === 'object') {
-            // 新格式：text 已经是 { en, zh } 对象
-            setSubtitles(enSubtitle.content)
-          } else {
-            // 旧格式：需要手动合并
-            const merged = enSubtitle.content
-              .filter((s: any) => s.text && typeof s.text === 'string' && s.text.trim())
-              .map((enSub: any) => {
-                // 查找时间相近的中文字幕
-                const zhSub = zhSubtitle?.content?.find((z: any) =>
-                  Math.abs(z.startTime - enSub.startTime) < 500
-                )
-                return {
-                  ...enSub,
-                  text: {
-                    en: enSub.text,
-                    zh: zhSub?.text || ''
-                  }
+              // 如果是旧格式（字符串），需要合并中文字幕
+              const zhSub = zhSubtitle?.content?.find((z: any) =>
+                Math.abs(z.startTime - enSub.startTime) < 500
+              )
+
+              // 清理HTML标签
+              let cleanEnText = enSub.text
+              if (typeof cleanEnText === 'string') {
+                cleanEnText = cleanEnText.replace(/<[^>]*>/g, '') // 移除HTML标签
+              }
+
+              return {
+                ...enSub,
+                text: {
+                  en: cleanEnText,
+                  zh: zhSub?.text || ''
                 }
-              })
-            setSubtitles(merged)
-          }
+              }
+            })
+          setSubtitles(processed)
         } else {
           setSubtitles([])
         }
@@ -221,7 +248,7 @@ export default function VideoPage() {
       const response = await fetch(`/api/notes?videoId=${videoId}`)
       if (response.ok) {
         const data = await response.json()
-        if (data.success) {
+        if (data.success && data.data?.notes && Array.isArray(data.data.notes)) {
           setNotes(data.data.notes)
         }
       }
@@ -234,8 +261,12 @@ export default function VideoPage() {
     try {
       const response = await fetch('/api/words')
       const data = await response.json()
-      if (data.success) {
-        const words = new Set<string>(data.data.words.map((w: any) => w.word.toLowerCase()))
+      if (data.success && data.data?.words && Array.isArray(data.data.words)) {
+        const words = new Set<string>(
+          data.data.words
+            .filter((w: any) => w.word)  // 过滤掉 word 为 null/undefined 的记录
+            .map((w: any) => w.word.toLowerCase())
+        )
         setSavedWords(words)
       }
     } catch (error) {
@@ -247,7 +278,7 @@ export default function VideoPage() {
     try {
       const response = await fetch(`/api/expressions?videoId=${videoId}`)
       const data = await response.json()
-      if (data.success) {
+      if (data.success && data.data?.expressions && Array.isArray(data.data.expressions)) {
         const expressionsMap = new Map<string, { id: string; text: string }>()
         data.data.expressions.forEach((e: any) => {
           expressionsMap.set(e.text, { id: e.id, text: e.text })
@@ -595,6 +626,9 @@ export default function VideoPage() {
       if (response.ok) {
         setSavedWords(prev => new Set([...Array.from(prev), wordData.word.toLowerCase()]))
         alert('单词已保存到单词本')
+      } else {
+        const errorData = await response.json()
+        alert(errorData.error || '保存失败')
       }
     } catch (error) {
       console.error('保存单词失败:', error)
@@ -820,23 +854,31 @@ export default function VideoPage() {
   return (
     <div className="min-h-screen bg-primary">
       {/* 顶部导航 */}
-      <header className="bg-surface-light border-b border-gray-800 sticky top-0 z-50">
+      <header className="bg-surface-light border-b border-gray-800 sticky top-0 relative" style={{ zIndex: 100, pointerEvents: 'auto' }}>
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4 h-16">
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-gray-300 hover:text-accent transition-colors"
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                console.log('点击返回首页')
+                try {
+                  router.push('/')
+                } catch (error) {
+                  console.error('导航失败:', error)
+                  window.location.href = '/'
+                }
+              }}
+              className="flex items-center gap-2 text-gray-300 hover:text-accent transition-colors cursor-pointer"
+              type="button"
             >
               <ArrowLeft size={20} />
               返回首页
-            </Link>
+            </button>
             <div className="flex-1 min-w-0">
               <h1 className="text-lg font-heading font-semibold text-white truncate">
                 {video.title}
               </h1>
-              {videoTitleTranslation && (
-                <p className="text-sm text-gray-400 truncate">{videoTitleTranslation}</p>
-              )}
             </div>
 
             {/* 右侧导航 */}
@@ -850,21 +892,43 @@ export default function VideoPage() {
                 <Printer size={16} />
               </button>
 
-              <Link
-                href="/vocabulary"
-                className="p-1.5 text-gray-300 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors hidden sm:block"
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('点击单词本')
+                  try {
+                    router.push('/vocabulary')
+                  } catch (error) {
+                    console.error('导航失败:', error)
+                    window.location.href = '/vocabulary'
+                  }
+                }}
+                className="p-1.5 text-gray-300 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors cursor-pointer"
                 title="单词本"
+                type="button"
               >
                 <Book size={16} />
-              </Link>
+              </button>
 
-              <Link
-                href="/notes"
-                className="p-1.5 text-gray-300 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors hidden sm:block"
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  console.log('点击笔记本')
+                  try {
+                    router.push('/notes')
+                  } catch (error) {
+                    console.error('导航失败:', error)
+                    window.location.href = '/notes'
+                  }
+                }}
+                className="p-1.5 text-gray-300 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors cursor-pointer"
                 title="笔记"
+                type="button"
               >
                 <FileText size={16} />
-              </Link>
+              </button>
             </div>
           </div>
         </div>
@@ -888,7 +952,7 @@ export default function VideoPage() {
             <VideoPlayer
               ref={mobileVideoPlayerRef}
               src={video.filePath}
-              subtitles={video.subtitles}
+              subtitles={video.subtitles || []}
               parsedSubtitles={subtitles}
               onTimeUpdate={handleTimeUpdate}
               onSubtitleChange={handleSubtitleChange}
@@ -1001,12 +1065,23 @@ export default function VideoPage() {
                 </button>
 
                 {/* 词卡 - 链接到单词本 */}
-                <Link
-                  href="/vocabulary"
-                  className="px-3 py-1.5 text-sm font-bold rounded-lg transition-colors text-gray-400 hover:text-white hover:bg-surface-light"
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    console.log('点击词卡')
+                    try {
+                      router.push('/vocabulary')
+                    } catch (error) {
+                      console.error('导航失败:', error)
+                      window.location.href = '/vocabulary'
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm font-bold rounded-lg transition-colors text-gray-400 hover:text-white hover:bg-surface-light cursor-pointer"
+                  type="button"
                 >
                   词卡
-                </Link>
+                </button>
               </div>
           </div>
 
@@ -1147,7 +1222,7 @@ export default function VideoPage() {
             <VideoPlayer
               ref={videoPlayerRef}
               src={video.filePath}
-              subtitles={video.subtitles}
+              subtitles={video.subtitles || []}
               parsedSubtitles={subtitles}
               onTimeUpdate={handleTimeUpdate}
               onSubtitleChange={handleSubtitleChange}
@@ -1171,9 +1246,6 @@ export default function VideoPage() {
                   <Star size={20} fill={isFavorited ? 'currentColor' : 'none'} />
                 </button>
               </div>
-              {videoTitleTranslation && (
-                <p className="text-sm text-gray-400 mb-2">{videoTitleTranslation}</p>
-              )}
 
               {video.description && (
                 <p className="text-sm text-gray-400 mb-2 line-clamp-1">{video.description}</p>
@@ -1189,7 +1261,7 @@ export default function VideoPage() {
                 </span>
                 {video.category && (
                   <span className="px-2 py-0.5 bg-surface text-gray-300 rounded-full text-xs">
-                    {video.category}
+                    {categoryTranslations[video.category] || video.category}
                   </span>
                 )}
               </div>
@@ -1226,7 +1298,7 @@ export default function VideoPage() {
                     })
                     setShowWordCard(false)
                   }}
-                  isSaved={savedWords.has(selectedWord.toLowerCase())}
+                  isSaved={selectedWord ? savedWords.has(selectedWord.toLowerCase()) : false}
                   onClose={() => setShowWordCard(false)}
                 />
               </div>

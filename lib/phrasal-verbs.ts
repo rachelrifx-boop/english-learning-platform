@@ -234,6 +234,7 @@ export const PHRASAL_VERBS: Record<string, {
 
 // 获取短语信息
 export function getPhraseInfo(phrase: string) {
+  if (!phrase) return null
   const normalizedPhrase = phrase.toLowerCase().trim()
   return PHRASAL_VERBS[normalizedPhrase] || null
 }
@@ -251,6 +252,8 @@ export function findPhrasesInText(text: string): Array<{
     end: number
     info: typeof PHRASAL_VERBS[keyof typeof PHRASAL_VERBS]
   }> = []
+
+  if (!text) return results
 
   const lowerText = text.toLowerCase()
 

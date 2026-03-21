@@ -54,8 +54,8 @@ export function ColorHighlight({
     const words = text.split(/(\s+|[.,!?;:"'()])/g).filter(w => w.trim().length > 0)
 
     return words.map((word, index) => {
-      const cleanWord = word.toLowerCase().replace(/[.,!?;:"'()]/g, '')
-      const highlightColor = highlights.get(cleanWord) || 'none'
+      const cleanWord = word ? word.toLowerCase().replace(/[.,!?;:"'()]/g, '') : ''
+      const highlightColor = cleanWord ? highlights.get(cleanWord) || 'none' : 'none'
       const isHighlighted = highlightColor !== 'none'
 
       return (

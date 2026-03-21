@@ -308,10 +308,11 @@ function SavedWordCard({
         ) : null}
 
         {/* 视频来源信息 */}
-        {word.timestamp && (
+        {word.video && (
           <div className="pt-3 border-t border-gray-700">
             <p className="text-xs text-gray-500">
-              来自: {word.video.title} - {formatTime(word.timestamp)}
+              来自: {word.video.title}
+              {word.timestamp && word.timestamp > 0 && ` - ${formatTime(word.timestamp)}`}
             </p>
           </div>
         )}
@@ -701,7 +702,10 @@ export default function VocabularyPage() {
                   <p className="text-gray-400 text-sm mb-3">{expr.translation}</p>
 
                   <div className="pt-3 border-t border-gray-700">
-                    <p className="text-xs text-gray-500">{expr.video.title}</p>
+                    <p className="text-xs text-gray-500">
+                      来自: {expr.video.title}
+                      {expr.timestamp && expr.timestamp > 0 && ` - ${formatTime(expr.timestamp)}`}
+                    </p>
                   </div>
                 </div>
               ))
@@ -849,6 +853,25 @@ export default function VocabularyPage() {
                   下一张
                 </button>
               </div>
+
+              {/* 来源信息 */}
+              {activeTab === 'words' && words[currentCardIndex]?.video && (
+                <div className="pt-3 border-t border-gray-700 mt-4">
+                  <p className="text-xs text-gray-500 text-center">
+                    来自: {words[currentCardIndex].video.title}
+                    {words[currentCardIndex].timestamp && words[currentCardIndex].timestamp! > 0 && ` - ${formatTime(words[currentCardIndex].timestamp)}`}
+                  </p>
+                </div>
+              )}
+
+              {activeTab === 'expressions' && expressions[currentCardIndex]?.video && (
+                <div className="pt-3 border-t border-gray-700 mt-4">
+                  <p className="text-xs text-gray-500 text-center">
+                    来自: {expressions[currentCardIndex].video.title}
+                    {expressions[currentCardIndex].timestamp && expressions[currentCardIndex].timestamp! > 0 && ` - ${formatTime(expressions[currentCardIndex].timestamp)}`}
+                  </p>
+                </div>
+              )}
 
               <p className="text-center text-gray-500 text-sm mt-4">点击卡片翻转</p>
             </div>

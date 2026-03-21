@@ -117,9 +117,9 @@ export function SubtitlePanel({
   const activeSubtitleRef = useRef<HTMLDivElement>(null)
 
   // 找到当前激活的字幕
-  const activeIndex = subtitles.findIndex(
+  const activeIndex = subtitles && subtitles.length > 0 ? subtitles.findIndex(
     (sub) => currentTime >= sub.startTime / 1000 && currentTime <= sub.endTime / 1000
-  )
+  ) : -1
 
   // 处理字幕高亮信息变化
   const handleHighlightInfoChange = (subtitleId: number, highlights: HighlightInfo[]) => {
@@ -175,7 +175,7 @@ export function SubtitlePanel({
   const handleClick = (subtitleId: number, time: number, shouldPlay = false, endTime?: number) => {
     // 移动端功能模式处理
     if (isMobile && mobileFunctionMode !== 'none') {
-      const subtitle = subtitles.find(s => s.id === subtitleId)
+      const subtitle = subtitles && subtitles.find(s => s.id === subtitleId)
       if (!subtitle) return
 
       if (mobileFunctionMode === 'follow') {
@@ -238,7 +238,7 @@ export function SubtitlePanel({
     onToggleRecorder?.()
   }
 
-  if (subtitles.length === 0) {
+  if (!subtitles || subtitles.length === 0) {
     return (
       <div className="bg-surface-light rounded-xl p-6 text-center text-gray-400">
         <p>暂无字幕</p>
@@ -594,7 +594,7 @@ export function SubtitlePanel({
               word={popupWord}
               entry={dictionaryEntry}
               loading={loadingDict}
-              isSaved={savedWords?.has(popupWord.toLowerCase())}
+              isSaved={popupWord ? savedWords?.has(popupWord.toLowerCase()) : false}
               onClose={() => setPopupWord(null)}
               onSave={(translation) => {
                 if (onWordSave && dictionaryEntry) {
@@ -606,6 +606,7 @@ export function SubtitlePanel({
                     translation,
                     partOfSpeech: firstMeaning?.partOfSpeech || '',
                     sentence: firstDef?.example,
+                    sentenceTranslation: firstDef?.exampleTranslation, // 添加例句翻译
                     usPhonetic: dictionaryEntry?.usPhonetic,
                     ukPhonetic: dictionaryEntry?.ukPhonetic,
                     collocations: dictionaryEntry?.collocations,
