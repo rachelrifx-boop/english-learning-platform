@@ -47,7 +47,9 @@ class LRUCache<K, V> {
     // 如果超过最大大小，删除最旧的
     else if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value
-      this.cache.delete(firstKey)
+      if (firstKey) {
+        this.cache.delete(firstKey)
+      }
     }
     this.cache.set(key, value)
   }

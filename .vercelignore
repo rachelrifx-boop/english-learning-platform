@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+
+# Development files
+.next
+.dev.db
+
+# Uploads (will use external storage)
+public/uploads/*
+
+# Git
+.git
+
+# IDE
+.vscode
+.idea
+
+# Environment files
+.env.local
+.env.development
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+.DS_Store
+*.pem

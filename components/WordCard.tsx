@@ -30,7 +30,7 @@ interface WordCardProps {
   entry: DictionaryEntry | null
   loading?: boolean
   error?: string | null
-  onSave?: (translation: string) => void
+  onSave?: (translation: string, exampleTranslations?: Record<string, string>) => void
   isSaved?: boolean
   onClose?: () => void
 }

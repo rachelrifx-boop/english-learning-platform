@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     let speechKey = ''
 
     if (speechService !== 'local' && apiKey) {
-      const keys = apiKey.split(',').map(k => k.trim())
+      const keys = apiKey.split(',').map((k: string) => k.trim())
       speechKey = keys[0]
       baiduKey = keys[1] && keys[2] ? `${keys[1]},${keys[2]}` : keys[1] || ''
     } else if (apiKey) {

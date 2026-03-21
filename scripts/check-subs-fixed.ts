@@ -51,7 +51,7 @@ async function checkSubtitles() {
         }
       }
     } catch (e) {
-      console.log('Failed to parse content:', e.message)
+      console.log('Failed to parse content:', (e as Error).message)
       console.log('First 200 chars:', s.content.substring(0, 200))
     }
   })

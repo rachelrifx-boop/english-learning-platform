@@ -44,7 +44,9 @@ function setCachedTranslation(word: string, translation: string): void {
   // 如果缓存太大，删除最早的条目
   if (translationCache.size >= MAX_CACHE_SIZE) {
     const firstKey = translationCache.keys().next().value
-    translationCache.delete(firstKey)
+    if (firstKey) {
+      translationCache.delete(firstKey)
+    }
   }
 
   if (translation) {
