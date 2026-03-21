@@ -82,9 +82,17 @@ export async function POST(request: NextRequest) {
     console.log('[LOGIN] 登录成功')
     return response
   } catch (error) {
-    console.error('[LOGIN] 错误:', error)
+    console.error('[LOGIN] 详细错误信息:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    })
     return NextResponse.json(
-      { success: false, error: '登录失败，请稍后重试' },
+      {
+        success: false,
+        error: '登录失败，请稍后重试',
+        debug: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined
+      },
       { status: 500 }
     )
   }
