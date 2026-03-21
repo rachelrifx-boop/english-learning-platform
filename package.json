@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "auto-process": "node scripts/auto-process-video.js",
     "create-covers": "node scripts/create-default-cover.js",
-    "add-translations": "node scripts/add-translations.js"
+    "add-translations": "node scripts/add-translations.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@google-cloud/speech": "^7.3.0",
