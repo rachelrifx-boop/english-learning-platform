@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles } from 'lucide-react'
-import { uploadFileWithProgress } from '@/lib/supabase-upload'
+import { uploadFile } from '@/lib/storage'
 
 interface Video {
   id: string
@@ -89,13 +89,9 @@ export default function AdminPage() {
     setUploadStatus('正在上传视频到云端...')
 
     try {
-      // 1. 上传视频文件到Supabase
+      // 1. 上传视频文件到云端存储（R2或Supabase）
       setUploadStatus('正在上传视频...')
-      const videoResult = await uploadFileWithProgress(
-        files.video,
-        'videos',
-        'videos'
-      )
+      const videoResult = await uploadFile(files.video, 'videos')
 
       if (videoResult.error || !videoResult.url) {
         alert(`视频上传失败: ${videoResult.error}`)
@@ -109,11 +105,7 @@ export default function AdminPage() {
       // 2. 上传封面（如果有）
       let coverUrl: string | null = null
       if (files.cover) {
-        const coverResult = await uploadFileWithProgress(
-          files.cover,
-          'videos',
-          'covers'
-        )
+        const coverResult = await uploadFile(files.cover, 'covers')
         if (!coverResult.error && coverResult.url) {
           coverUrl = coverResult.url
         }
@@ -127,22 +119,14 @@ export default function AdminPage() {
       let chineseSubtitleUrl: string | null = null
 
       if (files.englishSubtitle) {
-        const enResult = await uploadFileWithProgress(
-          files.englishSubtitle,
-          'videos',
-          'subtitles'
-        )
+        const enResult = await uploadFile(files.englishSubtitle, 'subtitles')
         if (!enResult.error && enResult.url) {
           englishSubtitleUrl = enResult.url
         }
       }
 
       if (files.chineseSubtitle) {
-        const zhResult = await uploadFileWithProgress(
-          files.chineseSubtitle,
-          'videos',
-          'subtitles'
-        )
+        const zhResult = await uploadFile(files.chineseSubtitle, 'subtitles')
         if (!zhResult.error && zhResult.url) {
           chineseSubtitleUrl = zhResult.url
         }
