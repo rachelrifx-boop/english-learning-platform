@@ -5,13 +5,19 @@ import { prisma } from '@/lib/prisma'
 // 获取用户学习统计数据
 export async function GET(request: NextRequest) {
   try {
+    console.log('[USER/STATS] Request received')
     const user = await verifyUser(request)
+
     if (!user) {
+      console.log('[USER/STATS] User not authenticated')
       return NextResponse.json(
         { success: false, error: '需要登录' },
         { status: 401 }
       )
     }
+
+    console.log('[USER/STATS] User authenticated:', user.id)
+    console.log('[USER/STATS] DATABASE_URL exists:', !!process.env.DATABASE_URL)
 
     // 获取收藏课程数
     const favoriteCount = await prisma.favoriteVideo.count({
@@ -41,6 +47,7 @@ export async function GET(request: NextRequest) {
     // 获取连续打卡天数
     const streakDays = await calculateStreak(user.id)
 
+    console.log('[USER/STATS] Stats retrieved successfully')
     return NextResponse.json({
       success: true,
       data: {
@@ -51,7 +58,15 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Get user stats error:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+
+    console.error('[USER/STATS] Get user stats error:', {
+      message: errorMessage,
+      stack: errorStack,
+      name: error instanceof Error ? error.name : undefined
+    })
+
     return NextResponse.json(
       { success: false, error: '获取统计数据失败' },
       { status: 500 }
