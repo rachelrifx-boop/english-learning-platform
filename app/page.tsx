@@ -88,9 +88,15 @@ export default function HomePage() {
   useEffect(() => {
     fetchUser()
     fetchVideos()
-    fetchUserStats()
-    fetchCheckIns()
   }, [selectedDifficulty, selectedDuration, selectedCategory, searchQuery])
+
+  // 当用户信息获取成功后，再获取统计数据和打卡记录
+  useEffect(() => {
+    if (user) {
+      fetchUserStats()
+      fetchCheckIns()
+    }
+  }, [user])
 
   const fetchUser = async () => {
     try {
@@ -130,6 +136,9 @@ export default function HomePage() {
   }
 
   const fetchUserStats = async () => {
+    // 只有在用户已登录时才获取统计数据
+    if (!user) return
+
     try {
       const response = await fetch('/api/user/stats')
       const data = await response.json()
@@ -145,6 +154,9 @@ export default function HomePage() {
   }
 
   const fetchCheckIns = async () => {
+    // 只有在用户已登录时才获取打卡记录
+    if (!user) return
+
     try {
       const response = await fetch('/api/checkin')
       const data = await response.json()
@@ -183,9 +195,13 @@ export default function HomePage() {
         // 刷新打卡记录和统计数据
         await fetchCheckIns()
         await fetchUserStats()
+        alert(`打卡成功！已连续学习 ${data.data.streakDays} 天`)
+      } else {
+        alert(data.error || '打卡失败')
       }
     } catch (error) {
       console.error('打卡失败:', error)
+      alert('打卡失败，请重试')
     }
   }
 
@@ -228,6 +244,9 @@ export default function HomePage() {
           completedCourses={completedCourses}
           hoursLearned={hoursLearned}
           streakDays={streakDays}
+          checkedDays={checkedDays}
+          checkedToday={checkedToday}
+          onCheckIn={handleCheckIn}
         />
       </div>
 

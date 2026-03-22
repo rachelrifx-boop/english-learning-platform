@@ -24,6 +24,9 @@ interface LeftSidebarProps {
   completedCourses?: number
   hoursLearned?: string
   streakDays?: number
+  checkedDays?: Set<string>
+  checkedToday?: boolean
+  onCheckIn?: () => void
 }
 
 // 话题中文翻译映射
@@ -58,7 +61,10 @@ export function LeftSidebar({
   favoriteCount = 0,
   completedCourses = 0,
   hoursLearned = '0.0',
-  streakDays = 0
+  streakDays = 0,
+  checkedDays = new Set(),
+  checkedToday = false,
+  onCheckIn
 }: LeftSidebarProps) {
   const [showFilters, setShowFilters] = useState(true)
   const [showCalendar, setShowCalendar] = useState(false)
@@ -66,32 +72,12 @@ export function LeftSidebar({
   const [selectedDuration, setSelectedDuration] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date())
-  const [checkedDays, setCheckedDays] = useState<Set<string>>(new Set())
-  const [checkedToday, setCheckedToday] = useState(false)
-  const [currentStreak, setCurrentStreak] = useState(0)
+  const [currentStreak, setCurrentStreak] = useState(streakDays)
 
-  // 获取打卡记录
+  // 当 streakDays prop 改变时更新本地状态
   useEffect(() => {
-    fetchCheckIns()
-  }, [])
-
-  const fetchCheckIns = async () => {
-    try {
-      const response = await fetch('/api/checkin')
-      const data = await response.json()
-      if (data.success) {
-        const dates = data.data.checkIns.map((checkIn: any) => {
-          const date = new Date(checkIn.date)
-          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-        })
-        setCheckedDays(new Set(dates))
-        setCheckedToday(data.data.checkedToday)
-        setCurrentStreak(data.data.streakDays)
-      }
-    } catch (error) {
-      console.error('获取打卡记录失败:', error)
-    }
-  }
+    setCurrentStreak(streakDays)
+  }, [streakDays])
 
   const difficulties = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
   const durations = [
@@ -164,26 +150,14 @@ export function LeftSidebar({
     setCurrentMonth(newMonth)
   }
 
-  const handleCheckIn = async () => {
+  const handleCheckIn = () => {
     if (checkedToday) {
       alert('今天已经打过卡了！')
       return
     }
 
-    try {
-      const response = await fetch('/api/checkin', { method: 'POST' })
-      const data = await response.json()
-
-      if (data.success) {
-        // 刷新打卡记录
-        await fetchCheckIns()
-        alert(`打卡成功！已连续学习 ${data.data.streakDays} 天`)
-      } else {
-        alert(data.error || '打卡失败')
-      }
-    } catch (error) {
-      console.error('打卡失败:', error)
-      alert('打卡失败，请重试')
+    if (onCheckIn) {
+      onCheckIn()
     }
   }
 
