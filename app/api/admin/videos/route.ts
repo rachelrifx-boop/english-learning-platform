@@ -66,54 +66,78 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 处理字幕URL
+    // 处理字幕URL（使用 Promise.allSettled 并行处理，提高效率）
     if (englishSubtitleUrl || chineseSubtitleUrl) {
       let englishSegments: any[] = []
       let chineseSegments: any[] = []
 
-      // 下载并解析英文字幕
+      // 并行下载字幕（带超时）
+      const fetchWithTimeout = async (url: string, timeout = 30000) => {
+        const controller = new AbortController()
+        const id = setTimeout(() => controller.abort(), timeout)
+        try {
+          const response = await fetch(url, { signal: controller.signal })
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          return await response.text()
+        } finally {
+          clearTimeout(id)
+        }
+      }
+
+      const subtitlePromises = []
+
+      // 下载英文字幕
       if (englishSubtitleUrl) {
-        try {
-          console.log('[UPLOAD] 下载英文字幕...')
-          const response = await fetch(englishSubtitleUrl)
-          const content = await response.text()
-          englishSegments = parseSubtitle(content, 'english.srt')
+        subtitlePromises.push(
+          (async () => {
+            try {
+              console.log('[UPLOAD] 下载英文字幕...')
+              const content = await fetchWithTimeout(englishSubtitleUrl, 30000)
+              englishSegments = parseSubtitle(content, 'english.srt')
 
-          await prisma.subtitle.create({
-            data: {
-              videoId: videoRecord.id,
-              language: 'EN',
-              content: JSON.stringify(englishSegments),
-              filePath: englishSubtitleUrl
+              await prisma.subtitle.create({
+                data: {
+                  videoId: videoRecord.id,
+                  language: 'EN',
+                  content: JSON.stringify(englishSegments),
+                  filePath: englishSubtitleUrl
+                }
+              })
+              console.log('[UPLOAD] 英文字幕已保存')
+            } catch (error: any) {
+              console.error('[UPLOAD] 处理英文字幕失败:', error?.message || error)
             }
-          })
-          console.log('[UPLOAD] 英文字幕已保存')
-        } catch (error) {
-          console.error('[UPLOAD] 处理英文字幕失败:', error)
-        }
+          })()
+        )
       }
 
-      // 下载并解析中文字幕
+      // 下载中文字幕
       if (chineseSubtitleUrl) {
-        try {
-          console.log('[UPLOAD] 下载中文字幕...')
-          const response = await fetch(chineseSubtitleUrl)
-          const content = await response.text()
-          chineseSegments = parseSubtitle(content, 'chinese.srt')
+        subtitlePromises.push(
+          (async () => {
+            try {
+              console.log('[UPLOAD] 下载中文字幕...')
+              const content = await fetchWithTimeout(chineseSubtitleUrl, 30000)
+              chineseSegments = parseSubtitle(content, 'chinese.srt')
 
-          await prisma.subtitle.create({
-            data: {
-              videoId: videoRecord.id,
-              language: 'ZH',
-              content: JSON.stringify(chineseSegments),
-              filePath: chineseSubtitleUrl
+              await prisma.subtitle.create({
+                data: {
+                  videoId: videoRecord.id,
+                  language: 'ZH',
+                  content: JSON.stringify(chineseSegments),
+                  filePath: chineseSubtitleUrl
+                }
+              })
+              console.log('[UPLOAD] 中文字幕已保存')
+            } catch (error: any) {
+              console.error('[UPLOAD] 处理中文字幕失败:', error?.message || error)
             }
-          })
-          console.log('[UPLOAD] 中文字幕已保存')
-        } catch (error) {
-          console.error('[UPLOAD] 处理中文字幕失败:', error)
-        }
+          })()
+        )
       }
+
+      // 等待所有字幕下载完成
+      await Promise.all(subtitlePromises)
 
       // 如果两种字幕都有，创建合并版本
       if (englishSegments.length > 0 && chineseSegments.length > 0) {
