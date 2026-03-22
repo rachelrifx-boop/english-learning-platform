@@ -18,7 +18,7 @@ export interface UploadResult {
 }
 
 /**
- * 上传文件到Supabase Storage（带进度回调）
+ * 上传文件到Supabase Storage（通过服务器端API，绕过RLS）
  * @param file 文件对象
  * @param bucket 存储桶名称
  * @param folder 文件夹路径
@@ -32,41 +32,44 @@ export async function uploadFileWithProgress(
   onProgress?: (progress: UploadProgress) => void
 ): Promise<UploadResult> {
   try {
-    // 生成唯一文件名
-    const timestamp = Date.now()
-    const random = Math.random().toString(36).substring(2, 15)
-    const fileName = file.name
-    const path = folder ? `${folder}/${timestamp}-${random}-${fileName}` : `${timestamp}-${random}-${fileName}`
+    console.log('[Supabase Upload] 开始上传文件:', {
+      fileName: file.name,
+      fileSize: file.size,
+      bucket,
+      folder
+    })
 
-    // 上传文件
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, {
-        cacheControl: '3600',
-        upsert: false,
-        // Supabase会自动处理大文件分块上传
-      })
+    // 使用 FormData 包装文件
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('bucket', bucket)
+    formData.append('folder', folder)
 
-    if (error) {
-      console.error('Supabase Storage上传错误:', error)
+    // 调用服务器端API（使用 Service Role Key 绕过 RLS）
+    const response = await fetch('/api/storage/upload', {
+      method: 'POST',
+      body: formData
+    })
+
+    const result = await response.json()
+
+    if (!response.ok || !result.success) {
+      console.error('[Supabase Upload] 上传失败:', result.error)
       return {
         path: '',
         url: '',
-        error: error.message
+        error: result.error || '上传失败'
       }
     }
 
-    // 获取公开URL
-    const { data: urlData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(data.path)
+    console.log('[Supabase Upload] 上传成功:', result.data.path)
 
     return {
-      path: data.path,
-      url: urlData.publicUrl
+      path: result.data.path,
+      url: result.data.path // 返回相对路径而不是完整URL，避免超出数据库列长度限制
     }
   } catch (error) {
-    console.error('上传文件失败:', error)
+    console.error('[Supabase Upload] 上传文件失败:', error)
     return {
       path: '',
       url: '',

@@ -41,13 +41,13 @@ model InviteCode {
 
 model Video {
   id          String          @id @default(cuid())
-  title       String
-  description String?
-  filePath    String
-  coverPath   String?
+  title       String          @db.Text
+  description String?         @db.Text
+  filePath    String          @db.Text
+  coverPath   String?         @db.Text
   duration    Int             // 秒
-  difficulty  String
-  category    String?
+  difficulty  String          @db.Text
+  category    String?         @db.Text
   subtitles   Subtitle[]
   words       Word[]
   expressions Expression[]

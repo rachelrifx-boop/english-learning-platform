@@ -38,30 +38,66 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 将空字符串转换为 null，避免数据库约束问题
+    const sanitizedCategory = category && category.trim() !== '' ? category : null
+    const sanitizedDescription = description && description.trim() !== '' ? description : null
+    const sanitizedCoverUrl = coverUrl && coverUrl.trim() !== '' ? coverUrl : null
+
     console.log('[UPLOAD] 开始创建视频记录:', title)
+    console.log('[UPLOAD] 接收到的完整数据:', JSON.stringify(body, null, 2))
 
     // 解析时长
     const parsedDuration = duration ? parseInt(duration) : 300
+    console.log('[UPLOAD] 解析后的时长:', parsedDuration, '原始值:', duration)
 
     // 创建视频记录
     let videoRecord
     try {
-      videoRecord = await prisma.video.create({
-        data: {
-          title,
-          description,
-          filePath: videoUrl, // Supabase Storage URL
-          coverPath: coverUrl || null,
-          duration: parsedDuration,
-          difficulty: (difficulty || 'B1') as any,
-          category
-        }
-      })
+      // 记录每个字段的长度
+      console.log('[UPLOAD] 字段长度检查:')
+      console.log('  title:', title.length, JSON.stringify(title))
+      console.log('  description:', description?.length || 0, description ? JSON.stringify(description.substring(0, 50)) : 'null')
+      console.log('  filePath:', videoUrl.length, JSON.stringify(videoUrl))
+      console.log('  coverPath:', coverUrl?.length || 0, coverUrl ? JSON.stringify(coverUrl.substring(0, 50)) : 'null')
+      console.log('  duration:', parsedDuration)
+      console.log('  difficulty:', difficulty?.length || 0, JSON.stringify(difficulty))
+      console.log('  category:', category?.length || 0, JSON.stringify(category))
+
+      // 使用原始 SQL 插入，绕过 Prisma 的类型检查问题
+      const videoId = `vid_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+      const escapedTitle = title.replace(/'/g, "''")
+      const escapedFilePath = videoUrl.replace(/'/g, "''")
+      const escapedDifficulty = (difficulty || 'B1').replace(/'/g, "''")
+      const escapedCoverPath = sanitizedCoverUrl ? `'${sanitizedCoverUrl.replace(/'/g, "''")}'` : 'NULL'
+      const escapedDescription = sanitizedDescription ? `'${sanitizedDescription.replace(/'/g, "''")}'` : 'NULL'
+      const escapedCategory = sanitizedCategory ? `'${sanitizedCategory.replace(/'/g, "''")}'` : 'NULL'
+
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO "Video" (id, title, description, "filePath", "coverPath", duration, difficulty, category, "createdAt")
+        VALUES ('${videoId}', '${escapedTitle}', ${escapedDescription}, '${escapedFilePath}', ${escapedCoverPath}, ${parsedDuration}, '${escapedDifficulty}', ${escapedCategory}, NOW())
+      `)
+
+      // 获取创建的记录
+      videoRecord = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM "Video" WHERE id = '${videoId}'`).then(r => r[0])
       console.log('[UPLOAD] 视频记录已创建:', videoRecord.id)
-    } catch (error) {
+    } catch (error: any) {
       console.error('[UPLOAD] 创建视频记录失败:', error)
+      console.error('[UPLOAD] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+        cause: error?.cause
+      })
       return NextResponse.json(
-        { success: false, error: '创建视频记录失败' },
+        {
+          success: false,
+          error: '创建视频记录失败',
+          details: {
+            message: error?.message,
+            code: error?.code,
+            meta: error?.meta
+          }
+        },
         { status: 500 }
       )
     }
