@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Clock, Play, Heart } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -13,6 +13,19 @@ export interface Video {
   duration: number
   difficulty: string
   category: string | null
+}
+
+// 处理封面 URL，确保通过代理访问 R2 上的文件
+function getCoverUrl(coverPath: string | null): string | null {
+  if (!coverPath) return null
+
+  // 如果是完整 URL，直接返回
+  if (coverPath.startsWith('http://') || coverPath.startsWith('https://')) {
+    return coverPath
+  }
+
+  // 如果是相对路径（R2 存储），通过代理访问
+  return `/api/video-proxy/${coverPath}`
 }
 
 interface VideoCardProps {
@@ -56,6 +69,9 @@ const categoryTranslations: Record<string, string> = {
 export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps) {
   const [isFavorited, setIsFavorited] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // 处理封面 URL
+  const coverUrl = useMemo(() => getCoverUrl(video.coverPath), [video.coverPath])
 
   useEffect(() => {
     checkFavoriteStatus()
@@ -135,9 +151,9 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
         <div className="bg-surface-light rounded-xl overflow-hidden hover:ring-2 hover:ring-accent transition-all group cursor-pointer">
           {/* 封面 */}
           <div className="relative aspect-video bg-surface">
-            {video.coverPath ? (
+            {coverUrl ? (
               <img
-                src={video.coverPath}
+                src={coverUrl}
                 alt={video.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />

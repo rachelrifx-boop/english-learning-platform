@@ -3,6 +3,7 @@ import { verifyToken } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseSubtitle, mergeSubtitles } from '@/lib/subtitle-parser'
 import { analyzeDifficulty } from '@/lib/difficulty-analyzer'
+import { extractAndUploadCover } from '@/lib/video-processor'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -129,6 +130,21 @@ export async function POST(request: NextRequest) {
       // 获取创建的记录
       videoRecord = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM "Video" WHERE id = '${videoId}'`).then(r => r[0])
       console.log('[UPLOAD] 视频记录已创建:', videoRecord.id)
+
+      // 如果没有提供封面，自动生成
+      if (!sanitizedCoverUrl) {
+        console.log('[UPLOAD] 未提供封面，开始自动生成...')
+        const autoCoverUrl = await extractAndUploadCover(videoUrl)
+        if (autoCoverUrl) {
+          await prisma.$executeRawUnsafe(`
+            UPDATE "Video" SET "coverPath" = '${autoCoverUrl.replace(/'/g, "''")}' WHERE id = '${videoId}'
+          `)
+          videoRecord.coverPath = autoCoverUrl
+          console.log('[UPLOAD] 自动封面生成成功:', autoCoverUrl)
+        } else {
+          console.log('[UPLOAD] 自动封面生成失败，将继续使用默认封面')
+        }
+      }
     } catch (error: any) {
       console.error('[UPLOAD] 创建视频记录失败:', error)
       console.error('[UPLOAD] Error details:', {

@@ -1,5 +1,8 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { randomBytes } from 'crypto'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import * as fs from 'fs'
 
 const execAsync = promisify(exec)
 
@@ -86,4 +89,127 @@ export function isValidSubtitleFile(filename: string): boolean {
   const validExtensions = ['.srt', '.vtt']
   const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'))
   return validExtensions.includes(ext)
+}
+
+// R2 配置
+const r2AccountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
+const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'english-learning-videos'
+
+// 创建 R2 客户端
+let r2Client: S3Client | null = null
+if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
+  r2Client = new S3Client({
+    region: 'auto',
+    endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: r2AccessKeyId,
+      secretAccessKey: r2SecretAccessKey,
+    },
+  })
+}
+
+/**
+ * 上传封面到 R2 存储
+ */
+async function uploadCoverToR2(buffer: Buffer, fileName: string): Promise<{ url: string | null; error?: string }> {
+  if (!r2Client) {
+    return { url: null, error: 'R2 未配置' }
+  }
+
+  try {
+    const key = `covers/${fileName}`
+    const command = new PutObjectCommand({
+      Bucket: r2BucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: 'image/jpeg',
+    })
+
+    await r2Client.send(command)
+    return { url: key }
+  } catch (error: any) {
+    console.error('[COVER] R2 上传失败:', error)
+    return { url: null, error: error.message }
+  }
+}
+
+/**
+ * 从视频自动提取并上传封面
+ * @param videoUrl 视频 URL（可以是相对路径或完整 URL）
+ * @returns 封面 URL 或 null
+ */
+export async function extractAndUploadCover(videoUrl: string): Promise<string | null> {
+  try {
+    console.log('[COVER] 开始自动提取封面:', videoUrl)
+
+    // 获取完整的视频URL（如果是相对路径）
+    let fullVideoUrl = videoUrl
+    if (videoUrl.startsWith('/api/video-proxy/')) {
+      const host = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      fullVideoUrl = `${host}${videoUrl}`
+    } else if (videoUrl.startsWith('/')) {
+      const host = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      fullVideoUrl = `${host}${videoUrl}`
+    } else if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+      const host = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      fullVideoUrl = `${host}/api/video-proxy/${videoUrl}`
+    }
+
+    console.log('[COVER] 完整视频URL:', fullVideoUrl)
+
+    // 生成临时文件名
+    const tempId = randomBytes(8).toString('hex')
+    const tempDir = 'C:\\Users\\DanDan\\english-learning-platform\\public\\uploads\\temp'
+
+    // 确保临时目录存在
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true })
+    }
+
+    const tempCoverPath = `${tempDir}\\cover-${tempId}.jpg`
+
+    // 使用 ffmpeg 截取视频首帧
+    const ffmpegCmd = `"${FFMPEG_PATH}" -y -ss 0 -i "${fullVideoUrl}" -vframes 1 -q:v 2 "${tempCoverPath}"`
+
+    console.log('[COVER] 执行命令:', ffmpegCmd)
+
+    await execAsync(ffmpegCmd, { timeout: 60000 })
+
+    // 检查文件是否生成成功
+    if (!fs.existsSync(tempCoverPath)) {
+      console.error('[COVER] 封面文件生成失败')
+      return null
+    }
+
+    console.log('[COVER] 封面文件已生成:', tempCoverPath)
+
+    // 读取文件
+    const coverBuffer = fs.readFileSync(tempCoverPath)
+    const coverFileName = `cover-${Date.now()}-${tempId}.jpg`
+
+    // 删除临时文件
+    try {
+      fs.unlinkSync(tempCoverPath)
+      console.log('[COVER] 临时文件已删除')
+    } catch (e) {
+      console.warn('[COVER] 删除临时文件失败:', e)
+    }
+
+    // 上传到云端存储
+    console.log('[COVER] 开始上传封面到云端...')
+    const uploadResult = await uploadCoverToR2(coverBuffer, coverFileName)
+
+    if (uploadResult.error || !uploadResult.url) {
+      console.error('[COVER] 封面上传失败:', uploadResult.error)
+      return null
+    }
+
+    console.log('[COVER] 封面自动生成成功:', uploadResult.url)
+    return uploadResult.url
+  } catch (error: any) {
+    console.error('[COVER] 自动生成封面失败:', error?.message || error)
+    return null
+  }
 }

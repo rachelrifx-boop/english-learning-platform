@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles } from 'lucide-react'
 import { uploadFile } from '@/lib/storage'
@@ -17,6 +17,19 @@ interface Video {
   createdAt: string
   subtitles: Array<{ id: string; language: string }>
   _count: { words: number; expressions: number }
+}
+
+// 处理封面 URL，确保通过代理访问 R2 上的文件
+function getCoverUrl(coverPath: string | null): string | null {
+  if (!coverPath) return null
+
+  // 如果是完整 URL，直接返回
+  if (coverPath.startsWith('http://') || coverPath.startsWith('https://')) {
+    return coverPath
+  }
+
+  // 如果是相对路径（R2 存储），通过代理访问
+  return `/api/video-proxy/${coverPath}`
 }
 
 export default function AdminPage() {
@@ -99,19 +112,40 @@ export default function AdminPage() {
         return
       }
 
-      setUploadProgress(33)
-      setUploadStatus('视频上传成功，正在上传封面...')
+      setUploadProgress(20)
+      setUploadStatus('视频上传成功，正在生成封面...')
 
-      // 2. 上传封面（如果有）
+      // 2. 自动截取视频首帧作为封面（如果没有手动上传封面）
       let coverUrl: string | null = null
       if (files.cover) {
+        // 使用用户上传的封面
+        setUploadStatus('正在上传封面...')
         const coverResult = await uploadFile(files.cover, 'covers')
         if (!coverResult.error && coverResult.url) {
           coverUrl = coverResult.url
         }
+      } else {
+        // 自动截取视频首帧
+        setUploadStatus('正在自动截取视频首帧...')
+        try {
+          const coverResponse = await fetch('/api/admin/extract-cover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoUrl: videoResult.url })
+          })
+          const coverData = await coverResponse.json()
+          if (coverData.success && coverData.data.coverUrl) {
+            coverUrl = coverData.data.coverUrl
+            console.log('[UPLOAD] 自动封面生成成功:', coverUrl)
+          } else {
+            console.warn('[UPLOAD] 自动封面生成失败，将使用默认封面')
+          }
+        } catch (error) {
+          console.warn('[UPLOAD] 自动封面生成失败:', error)
+        }
       }
 
-      setUploadProgress(50)
+      setUploadProgress(40)
       setUploadStatus('正在上传字幕...')
 
       // 3. 上传字幕文件
@@ -467,7 +501,8 @@ export default function AdminPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  封面图片
+                  封面图片（可选）
+                  <span className="text-gray-500 ml-2">留空则自动截取视频首帧</span>
                 </label>
                 <input
                   type="file"
@@ -574,14 +609,16 @@ export default function AdminPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {videos.map((video) => (
-            <div
-              key={video.id}
-              className="bg-surface-light rounded-xl overflow-hidden hover:ring-2 hover:ring-accent transition-all"
-            >
-              {video.coverPath ? (
+          {videos.map((video) => {
+            const coverUrl = getCoverUrl(video.coverPath)
+            return (
+              <div
+                key={video.id}
+                className="bg-surface-light rounded-xl overflow-hidden hover:ring-2 hover:ring-accent transition-all"
+              >
+              {coverUrl ? (
                 <img
-                  src={video.coverPath}
+                  src={coverUrl}
                   alt={video.title}
                   className="w-full h-48 object-cover"
                 />
@@ -637,8 +674,9 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
+              </div>
+            )
+            })}
         </div>
       )}
 
