@@ -3,6 +3,42 @@ import { verifyToken } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parseSubtitle, mergeSubtitles } from '@/lib/subtitle-parser'
 import { analyzeDifficulty } from '@/lib/difficulty-analyzer'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
+
+// 使用 ffprobe 获取视频时长
+async function getVideoDuration(videoUrl: string): Promise<number | null> {
+  try {
+    // 如果是相对路径（代理路径），转换为完整 URL
+    let fullUrl = videoUrl
+    if (videoUrl.startsWith('/api/video-proxy/')) {
+      // 获取主机名
+      const host = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      fullUrl = `${host}${videoUrl}`
+    }
+
+    console.log('[UPLOAD] 获取视频时长:', fullUrl)
+
+    // 使用 ffprobe 获取视频时长
+    const command = `"C:\\ffmpeg\\bin\\ffprobe.exe" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${fullUrl}"`
+    const { stdout } = await execAsync(command, { timeout: 60000 })
+
+    const duration = parseFloat(stdout.trim())
+    console.log('[UPLOAD] 视频时长:', duration, '秒')
+
+    if (isNaN(duration)) {
+      console.error('[UPLOAD] 无法解析时长:', stdout)
+      return null
+    }
+
+    return Math.round(duration)
+  } catch (error: any) {
+    console.error('[UPLOAD] 获取视频时长失败:', error?.message || error)
+    return null
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,9 +82,22 @@ export async function POST(request: NextRequest) {
     console.log('[UPLOAD] 开始创建视频记录:', title)
     console.log('[UPLOAD] 接收到的完整数据:', JSON.stringify(body, null, 2))
 
-    // 解析时长
-    const parsedDuration = duration ? parseInt(duration) : 300
-    console.log('[UPLOAD] 解析后的时长:', parsedDuration, '原始值:', duration)
+    // 解析时长 - 如果前端没有提供，自动获取
+    let parsedDuration = duration ? parseInt(duration) : null
+
+    if (!parsedDuration || parsedDuration <= 0) {
+      console.log('[UPLOAD] 前端未提供时长，自动获取中...')
+      const autoDuration = await getVideoDuration(videoUrl)
+      if (autoDuration !== null) {
+        parsedDuration = autoDuration
+      } else {
+        // 如果自动获取失败，使用默认值
+        parsedDuration = 300
+        console.log('[UPLOAD] 自动获取时长失败，使用默认值 300 秒')
+      }
+    }
+
+    console.log('[UPLOAD] 最终时长:', parsedDuration, '秒')
 
     // 创建视频记录
     let videoRecord

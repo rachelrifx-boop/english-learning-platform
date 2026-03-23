@@ -935,11 +935,11 @@ export default function VideoPage() {
       </header>
 
       {/* 主内容 */}
-      <main className="px-2 sm:px-4 lg:px-8 py-4 sm:py-8 max-w-[1800px] mx-auto h-[calc(100vh-64px)] overflow-hidden">
+      <main className="px-2 sm:px-4 lg:px-8 py-2 max-w-[1800px] mx-auto h-[calc(100vh-64px)] overflow-hidden">
         {/* 移动端布局：视频固定在顶部，字幕在中间，控制栏在底部 */}
         <div className="2xl:hidden h-full flex flex-col">
           {/* 移动端：视频区域 - 使用自适应高度 */}
-          <div className="flex-shrink-0 relative -mb-4" style={{ height: 'min(35vh, 280px)' }}>
+          <div className="flex-shrink-0 relative -mb-4 w-full aspect-video max-h-[35vh]">
             {/* 视频右上角收藏按钮 */}
             <button
               onClick={toggleVideoFavorite}

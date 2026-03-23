@@ -69,6 +69,21 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+  // 安全的播放函数，处理 AbortError
+  const safePlay = async (video: HTMLVideoElement) => {
+    try {
+      await video.play()
+      setPlaying(true)
+      return true
+    } catch (error) {
+      // 忽略播放中断错误（通常是组件重新渲染导致的）
+      if ((error as Error).name !== 'AbortError') {
+        console.error('播放失败:', error)
+      }
+      return false
+    }
+  }
+
   // 暴露方法给父组件
   useImperativeHandle(
     ref,
@@ -80,11 +95,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
           videoRef.current.currentTime = time
         }
       },
-      play: () => {
-        videoRef.current?.play()
+      play: async () => {
+        if (videoRef.current) {
+          await safePlay(videoRef.current)
+        }
       },
       pause: () => {
         videoRef.current?.pause()
+        setPlaying(false)
       }
     }),
     [videoRef]
@@ -153,10 +171,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
       setDuration(video.duration)
     }
 
-    const handleEnded = () => {
+    const handleEnded = async () => {
       if (loopMode === 'all') {
         video.currentTime = 0
-        video.play()
+        await safePlay(video)
       } else {
         setPlaying(false)
       }
@@ -249,16 +267,24 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [currentTime, duration, playbackRate, playing, loopMode, loopStart, parsedSubtitles, currentSubtitle])
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     const video = videoRef.current
     if (!video) return
 
     if (playing) {
       video.pause()
+      setPlaying(false)
     } else {
-      video.play()
+      try {
+        await video.play()
+        setPlaying(true)
+      } catch (error) {
+        // 忽略播放中断错误（通常是组件重新渲染导致的）
+        if ((error as Error).name !== 'AbortError') {
+          console.error('播放失败:', error)
+        }
+      }
     }
-    setPlaying(!playing)
   }
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,41 +320,38 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
   }
 
   // 字幕导航功能
-  const goToPreviousSubtitle = () => {
+  const goToPreviousSubtitle = async () => {
     const currentIndex = getCurrentSubtitleIndex()
     if (!parsedSubtitles || currentIndex <= 0) return
 
     const previousSubtitle = parsedSubtitles[currentIndex - 1]
-    if (previousSubtitle) {
-      videoRef.current!.currentTime = previousSubtitle.startTime / 1000
+    if (previousSubtitle && videoRef.current) {
+      videoRef.current.currentTime = previousSubtitle.startTime / 1000
       if (!playing) {
-        videoRef.current!.play()
-        setPlaying(true)
+        await safePlay(videoRef.current)
       }
     }
   }
 
-  const goToNextSubtitle = () => {
+  const goToNextSubtitle = async () => {
     const currentIndex = getCurrentSubtitleIndex()
     if (!parsedSubtitles || currentIndex === -1 || currentIndex >= parsedSubtitles.length - 1) return
 
     const nextSubtitle = parsedSubtitles[currentIndex + 1]
-    if (nextSubtitle) {
-      videoRef.current!.currentTime = nextSubtitle.startTime / 1000
+    if (nextSubtitle && videoRef.current) {
+      videoRef.current.currentTime = nextSubtitle.startTime / 1000
       if (!playing) {
-        videoRef.current!.play()
-        setPlaying(true)
+        await safePlay(videoRef.current)
       }
     }
   }
 
-  const replayCurrentSubtitle = () => {
-    if (!currentSubtitle) return
+  const replayCurrentSubtitle = async () => {
+    if (!currentSubtitle || !videoRef.current) return
 
-    videoRef.current!.currentTime = currentSubtitle.startTime / 1000
+    videoRef.current.currentTime = currentSubtitle.startTime / 1000
     if (!playing) {
-      videoRef.current!.play()
-      setPlaying(true)
+      await safePlay(videoRef.current)
     }
   }
 
@@ -418,16 +441,26 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
       {/* 视频播放器 */}
       <div
         ref={containerRef}
-        className="relative rounded-xl overflow-hidden group"
+        className="relative rounded-xl overflow-hidden group bg-black aspect-video"
         onClick={toggleControls}
       >
         <video
           ref={videoRef}
           src={src}
-          className="w-full h-full object-contain bg-black"
+          className="w-full h-full object-contain"
           onClick={(e) => {
             e.stopPropagation() // 阻止事件冒泡到容器
             togglePlay()
+          }}
+          onError={(e) => {
+            console.error('[VideoPlayer] Video load error:', e)
+            console.error('[VideoPlayer] Video src:', src)
+          }}
+          onLoadStart={() => {
+            console.log('[VideoPlayer] Video load start:', src)
+          }}
+          onCanPlay={() => {
+            console.log('[VideoPlayer] Video can play')
           }}
         />
 
