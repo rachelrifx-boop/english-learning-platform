@@ -43,6 +43,11 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
       accessKeyId: r2AccessKeyId,
       secretAccessKey: r2SecretAccessKey,
     },
+    // 添加请求超时设置
+    requestHandler: {
+      requestTimeout: 300000, // 5分钟超时
+      httpsAgent: undefined as any,
+    },
   })
 
   const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp')
@@ -57,30 +62,58 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
   console.log('[R2] 开始下载视频:', key)
   const startTime = Date.now()
 
-  const response = await r2Client.send(command)
-  const body = response.Body
+  // 添加超时 Promise
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('下载超时（3分钟）')), 180000)
+  })
 
-  if (body instanceof Readable) {
-    const chunks: Buffer[] = []
-    let downloadedBytes = 0
+  try {
+    const downloadPromise = (async () => {
+      const response = await r2Client.send(command)
+      const body = response.Body
 
-    for await (const chunk of body) {
-      chunks.push(chunk)
-      downloadedBytes += chunk.length
-      // 每下载 10MB 输出一次进度
-      if (downloadedBytes % (10 * 1024 * 1024) < chunk.length) {
-        console.log(`[R2] 下载进度: ${(downloadedBytes / (1024 * 1024)).toFixed(1)}MB`)
+      if (body instanceof Readable) {
+        const chunks: Buffer[] = []
+        let downloadedBytes = 0
+        let lastProgressUpdate = 0
+
+        for await (const chunk of body) {
+          chunks.push(chunk)
+          downloadedBytes += chunk.length
+
+          // 每下载 5MB 或每5秒更新一次进度
+          const now = Date.now()
+          if (downloadedBytes % (5 * 1024 * 1024) < chunk.length || now - lastProgressUpdate > 5000) {
+            const progress = Math.min(18, 15 + (downloadedBytes / (100 * 1024 * 1024)) * 3)
+            await updateStatus(videoId, 'downloading', Math.round(progress), `下载中...${(downloadedBytes / (1024 * 1024)).toFixed(0)}MB`)
+            lastProgressUpdate = now
+            console.log(`[R2] 下载进度: ${(downloadedBytes / (1024 * 1024)).toFixed(1)}MB`)
+          }
+        }
+        const buffer = Buffer.concat(chunks)
+        await writeFile(videoPath, buffer)
+      } else {
+        throw new Error('无法读取 R2 响应流')
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      console.log(`[R2] 视频下载完成: ${videoPath} (耗时 ${elapsed}秒)`)
+      return videoPath
+    })()
+
+    await Promise.race([downloadPromise, timeoutPromise])
+    return videoPath
+  } catch (error: any) {
+    // 清理部分下载的文件
+    if (existsSync(videoPath)) {
+      try {
+        await unlink(videoPath)
+      } catch (e) {
+        // ignore
       }
     }
-    const buffer = Buffer.concat(chunks)
-    await writeFile(videoPath, buffer)
-  } else {
-    throw new Error('无法读取 R2 响应流')
+    throw error
   }
-
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-  console.log(`[R2] 视频下载完成: ${videoPath} (耗时 ${elapsed}秒)`)
-  return videoPath
 }
 
 // 启动后台字幕生成任务
