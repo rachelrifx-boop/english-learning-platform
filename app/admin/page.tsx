@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles } from 'lucide-react'
+import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles, RefreshCw, GripVertical } from 'lucide-react'
 import { uploadFile } from '@/lib/storage'
 
 interface Video {
@@ -17,6 +17,7 @@ interface Video {
   createdAt: string
   subtitles: Array<{ id: string; language: string }>
   _count: { words: number; expressions: number }
+  displayOrder?: number
 }
 
 // 处理封面 URL，确保通过代理访问 R2 上的文件
@@ -49,6 +50,10 @@ export default function AdminPage() {
   const [editingVideo, setEditingVideo] = useState<Video | null>(null)
   const [updating, setUpdating] = useState(false)
   const [analyzingDifficulty, setAnalyzingDifficulty] = useState(false)
+  const [batchUpdating, setBatchUpdating] = useState(false)
+  const [batchUpdateStatus, setBatchUpdateStatus] = useState('')
+  const [draggedItem, setDraggedItem] = useState<string | null>(null)
+  const [isReordering, setIsReordering] = useState(false)
 
   // 上传表单状态
   const [formData, setFormData] = useState({
@@ -167,9 +172,9 @@ export default function AdminPage() {
       }
 
       setUploadProgress(75)
-      setUploadStatus('正在创建视频记录...')
+      setUploadStatus('正在获取视频时长并创建记录...')
 
-      // 4. 创建视频记录
+      // 4. 创建视频记录（不传 duration，让后端自动获取）
       const response = await fetch('/api/admin/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -181,7 +186,7 @@ export default function AdminPage() {
           coverUrl: coverUrl,
           englishSubtitleUrl: englishSubtitleUrl,
           chineseSubtitleUrl: chineseSubtitleUrl,
-          duration: 300, // 默认5分钟，用户可以之后编辑
+          // 不传递 duration，让后端自动获取视频实际时长
           difficulty: 'B1' // 默认难度，有字幕会自动分析
         })
       })
@@ -234,11 +239,6 @@ export default function AdminPage() {
       return
     }
 
-    if (speechService !== 'local' && !apiKey.trim()) {
-      alert(`请输入 ${speechService === 'openai' ? 'OpenAI' : 'Google Cloud'} API Key 和百度翻译 Key（用逗号分隔）`)
-      return
-    }
-
     if (speechService === 'local' && !apiKey.trim()) {
       alert('请输入百度翻译 API Key（APP_ID,SECRET_KEY）')
       return
@@ -246,36 +246,83 @@ export default function AdminPage() {
 
     setGeneratingSubtitle(true)
     setShowApiDialog(false)
+    setUploadProgress(0)
+    setUploadStatus('正在启动字幕生成任务...')
 
     try {
-      const response = await fetch('/api/admin/generate-subtitles', {
+      // 使用新的后台 API
+      const response = await fetch('/api/admin/subtitles/generate-background', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           videoId: selectedVideoId,
-          apiKey: apiKey.trim(),
-          speechService: speechService,
-          modelSize: speechService === 'local' ? modelSize : undefined
+          modelSize: modelSize,
+          baiduKey: apiKey.trim()
         })
       })
 
       const data = await response.json()
 
       if (!data.success) {
-        alert(data.error || '生成字幕失败')
+        alert(data.error || '启动字幕生成失败')
+        setGeneratingSubtitle(false)
         return
       }
 
-      alert('字幕生成成功！')
-      fetchVideos()
+      // 开始轮询状态
+      setUploadStatus('AI 正在识别语音...')
+      pollSubtitleStatus(selectedVideoId)
+
     } catch (error: any) {
-      console.error('生成字幕失败:', error)
-      alert('生成字幕失败：' + (error.message || '请稍后重试'))
-    } finally {
+      console.error('启动字幕生成失败:', error)
+      alert('启动字幕生成失败：' + (error.message || '请稍后重试'))
       setGeneratingSubtitle(false)
-      setSelectedVideoId(null)
-      setApiKey('')
     }
+  }
+
+  // 轮询字幕生成状态
+  const pollSubtitleStatus = async (videoId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/admin/subtitles/status?videoId=${videoId}`)
+        const data = await response.json()
+
+        if (data.success && data.data) {
+          const { status, progress, message } = data.data
+
+          setUploadProgress(progress)
+          setUploadStatus(message)
+
+          if (status === 'completed') {
+            clearInterval(pollInterval)
+            setGeneratingSubtitle(false)
+            setUploadProgress(0)
+            setUploadStatus('')
+            alert('字幕生成成功！')
+            fetchVideos()
+          } else if (status === 'error') {
+            clearInterval(pollInterval)
+            setGeneratingSubtitle(false)
+            setUploadProgress(0)
+            setUploadStatus('')
+            alert('字幕生成失败：' + message)
+          }
+        }
+      } catch (error) {
+        console.error('获取字幕状态失败:', error)
+      }
+    }, 2000) // 每 2 秒轮询一次
+
+    // 30 分钟后自动停止轮询
+    setTimeout(() => {
+      clearInterval(pollInterval)
+      if (generatingSubtitle) {
+        setGeneratingSubtitle(false)
+        setUploadProgress(0)
+        setUploadStatus('')
+        alert('字幕生成超时，请检查后台进程')
+      }
+    }, 30 * 60 * 1000)
   }
 
   const handleEditVideo = (video: Video) => {
@@ -415,6 +462,142 @@ export default function AdminPage() {
     }
   }
 
+  // 批量更新所有视频时长
+  const handleBatchUpdateDurations = async () => {
+    if (!confirm('确定要批量更新所有视频的时长吗？\n\n这将使用 ffprobe 获取每个视频的实际时长，可能需要几分钟时间。请耐心等待，不要关闭页面。')) {
+      return
+    }
+
+    setBatchUpdating(true)
+    setBatchUpdateStatus('正在批量更新视频时长...')
+
+    // 使用 AbortController 设置更长的超时时间（10 分钟）
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000)
+
+    try {
+      const response = await fetch('/api/admin/batch-update-durations', {
+        method: 'POST',
+        signal: controller.signal
+      })
+
+      clearTimeout(timeoutId)
+
+      // 检查 HTTP 状态
+      if (!response.ok) {
+        if (response.status === 401) {
+          alert('未登录，请先登录')
+        } else if (response.status === 403) {
+          alert('无权访问，需要管理员权限')
+        } else {
+          alert(`服务器错误: ${response.status}`)
+        }
+        setBatchUpdateStatus('')
+        setBatchUpdating(false)
+        return
+      }
+
+      const data = await response.json()
+
+      if (!data.success) {
+        alert(data.error || '批量更新失败')
+        setBatchUpdateStatus('')
+        setBatchUpdating(false)
+        return
+      }
+
+      const { results, summary } = data.data
+      const updated = results.filter((r: any) => r.status === 'updated')
+
+      alert(`批量更新完成！\n\n` +
+        `总计: ${summary.total} 个视频\n` +
+        `已更新: ${summary.successCount} 个\n` +
+        `无需更新: ${summary.total - summary.successCount - summary.failCount} 个\n` +
+        `失败: ${summary.failCount} 个` +
+        (updated.length > 0 ? `\n\n更新详情：\n${updated.map((r: any) => `${r.title}: ${r.oldDuration}s -> ${r.newDuration}s`).join('\n')}` : '')
+      )
+
+      setBatchUpdateStatus('')
+      fetchVideos()
+    } catch (error: any) {
+      console.error('批量更新失败:', error)
+
+      if (error.name === 'AbortError') {
+        alert('请求超时，批量更新时间过长。请稍后重试，或者使用单个视频更新功能。')
+      } else {
+        alert('批量更新失败：' + (error.message || '请稍后重试'))
+      }
+
+      setBatchUpdateStatus('')
+    } finally {
+      setBatchUpdating(false)
+    }
+  }
+
+  // 拖拽处理函数
+  const handleDragStart = (e: React.DragEvent, videoId: string) => {
+    setDraggedItem(videoId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetVideoId: string) => {
+    e.preventDefault()
+
+    if (!draggedItem || draggedItem === targetVideoId) {
+      setDraggedItem(null)
+      return
+    }
+
+    // 创建新的视频顺序
+    const draggedIndex = videos.findIndex(v => v.id === draggedItem)
+    const targetIndex = videos.findIndex(v => v.id === targetVideoId)
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedItem(null)
+      return
+    }
+
+    const newVideos = [...videos]
+    const [removed] = newVideos.splice(draggedIndex, 1)
+    newVideos.splice(targetIndex, 0, removed)
+
+    // 更新本地状态
+    setVideos(newVideos)
+    setDraggedItem(null)
+
+    // 保存到服务器
+    setIsReordering(true)
+    try {
+      const response = await fetch('/api/admin/videos/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoIds: newVideos.map(v => v.id) })
+      })
+
+      const data = await response.json()
+      if (!data.success) {
+        alert(data.error || '更新排序失败')
+        // 失败时恢复原顺序
+        fetchVideos()
+      }
+    } catch (error) {
+      console.error('更新排序失败:', error)
+      alert('更新排序失败')
+      fetchVideos()
+    } finally {
+      setIsReordering(false)
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggedItem(null)
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -424,13 +607,24 @@ export default function AdminPage() {
           </h1>
           <p className="text-gray-400">上传和管理课程视频</p>
         </div>
-        <button
-          onClick={() => setShowUploadForm(!showUploadForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-primary text-white rounded-lg hover:opacity-90 transition-opacity"
-        >
-          <Upload size={20} />
-          上传视频
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBatchUpdateDurations}
+            disabled={batchUpdating}
+            className="flex items-center gap-2 px-4 py-2 bg-surface text-gray-300 rounded-lg hover:bg-surface-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="批量更新所有视频的实际时长"
+          >
+            <RefreshCw size={18} className={batchUpdating ? 'animate-spin' : ''} />
+            {batchUpdating ? '更新中...' : '更新时长'}
+          </button>
+          <button
+            onClick={() => setShowUploadForm(!showUploadForm)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-primary text-white rounded-lg hover:opacity-90 transition-opacity"
+          >
+            <Upload size={20} />
+            上传视频
+          </button>
+        </div>
       </div>
 
       {/* 上传表单 */}
@@ -608,25 +802,45 @@ export default function AdminPage() {
           <p>暂无视频，点击上方按钮上传第一个视频</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {videos.map((video) => {
-            const coverUrl = getCoverUrl(video.coverPath)
-            return (
-              <div
-                key={video.id}
-                className="bg-surface-light rounded-xl overflow-hidden hover:ring-2 hover:ring-accent transition-all"
-              >
-              {coverUrl ? (
-                <img
-                  src={coverUrl}
-                  alt={video.title}
-                  className="w-full h-48 object-cover"
-                />
-              ) : (
-                <div className="w-full h-48 bg-gradient-primary flex items-center justify-center">
-                  <Film size={48} className="text-white/50" />
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-gray-400 px-2">
+            <GripVertical size={16} />
+            <span>拖拽视频卡片可调整显示顺序</span>
+            {isReordering && <span className="text-accent ml-2">保存中...</span>}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {videos.map((video) => {
+              const coverUrl = getCoverUrl(video.coverPath)
+              const isDragging = draggedItem === video.id
+              return (
+                <div
+                  key={video.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, video.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, video.id)}
+                  onDragEnd={handleDragEnd}
+                  className={`bg-surface-light rounded-xl overflow-hidden transition-all cursor-move ${
+                    isDragging ? 'opacity-50 scale-95' : 'hover:ring-2 hover:ring-accent'
+                  }`}
+                >
+              <div className="relative">
+                {coverUrl ? (
+                  <img
+                    src={coverUrl}
+                    alt={video.title}
+                    className="w-full h-48 object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-48 bg-gradient-primary flex items-center justify-center">
+                    <Film size={48} className="text-white/50" />
+                  </div>
+                )}
+                {/* 拖拽手柄 */}
+                <div className="absolute top-2 left-2 bg-black/50 rounded p-1.5 text-white/70 hover:text-white cursor-move">
+                  <GripVertical size={16} />
                 </div>
-              )}
+              </div>
               <div className="p-4">
                 <h3 className="text-lg font-heading font-semibold text-white mb-2 line-clamp-2">
                   {video.title}
@@ -677,6 +891,7 @@ export default function AdminPage() {
               </div>
             )
             })}
+          </div>
         </div>
       )}
 
@@ -853,15 +1068,36 @@ export default function AdminPage() {
       )}
 
       {/* 生成字幕进度提示 */}
-      {generatingSubtitle && (
-        <div className="fixed bottom-4 right-4 bg-surface-light border border-accent/30 rounded-xl p-4 shadow-xl max-w-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></div>
-            <div>
-              <p className="text-sm font-medium text-white">AI 正在生成字幕...</p>
-              <p className="text-xs text-gray-400 mt-1">这可能需要几分钟，请勿关闭页面</p>
-            </div>
+      {batchUpdateStatus && (
+        <div className="fixed bottom-4 right-4 bg-surface-light border border-accent/30 rounded-xl p-4 shadow-xl max-w-sm w-80 z-50">
+          <div className="flex items-center gap-3 mb-2">
+            <RefreshCw size={18} className="text-accent animate-spin" />
+            <p className="text-sm font-medium text-white">批量更新时长</p>
           </div>
+          <p className="text-xs text-gray-400">{batchUpdateStatus}</p>
+        </div>
+      )}
+
+      {generatingSubtitle && (
+        <div className="fixed bottom-4 right-4 bg-surface-light border border-accent/30 rounded-xl p-4 shadow-xl max-w-sm w-80">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></div>
+            <p className="text-sm font-medium text-white">AI 正在生成字幕...</p>
+          </div>
+          {uploadStatus && (
+            <p className="text-xs text-gray-400 mb-2">{uploadStatus}</p>
+          )}
+          {uploadProgress > 0 && (
+            <div className="w-full bg-surface rounded-full h-2 overflow-hidden">
+              <div
+                className="h-full bg-gradient-primary transition-all duration-300 ease-out"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          )}
+          {uploadProgress > 0 && (
+            <p className="text-xs text-accent mt-1 text-right">{uploadProgress}%</p>
+          )}
         </div>
       )}
 

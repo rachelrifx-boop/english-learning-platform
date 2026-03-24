@@ -11,20 +11,75 @@ const execAsync = promisify(exec)
 
 // 使用 ffprobe 获取视频时长
 async function getVideoDuration(videoUrl: string): Promise<number | null> {
+  // 使用与批量更新相同的逻辑
+  const { existsSync } = require('fs')
+  const path = require('path')
+  const { writeFile, unlink } = require('fs/promises')
+  const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3')
+  const { Readable } = require('stream')
+
+  let localVideoPath: string | null = null
+  let downloadedVideo = false
+
   try {
-    // 如果是相对路径（代理路径），转换为完整 URL
-    let fullUrl = videoUrl
-    if (videoUrl.startsWith('/api/video-proxy/')) {
-      // 获取主机名
-      const host = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      fullUrl = `${host}${videoUrl}`
+    // 首先尝试本地路径
+    const localPath = path.join(process.cwd(), 'public', videoUrl)
+    if (existsSync(localPath)) {
+      console.log('[UPLOAD] 使用本地视频文件')
+      localVideoPath = localPath
+    } else {
+      // 本地没有，从 R2 下载
+      console.log('[UPLOAD] 本地无视频，从 R2 下载...')
+
+      const r2AccountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
+      const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+      const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+      const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'english-learning-videos'
+
+      if (!r2AccountId || !r2AccessKeyId || !r2SecretAccessKey) {
+        console.log('[UPLOAD] R2 配置不完整，使用默认时长')
+        return null
+      }
+
+      const r2Client = new S3Client({
+        region: 'auto',
+        endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: r2AccessKeyId,
+          secretAccessKey: r2SecretAccessKey,
+        },
+      })
+
+      const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp')
+      const videoFilename = `upload-duration-${Date.now()}.mp4`
+      localVideoPath = path.join(tempDir, videoFilename)
+
+      const command = new GetObjectCommand({
+        Bucket: r2BucketName,
+        Key: videoUrl,
+      })
+
+      const response = await r2Client.send(command)
+      const body = response.Body
+
+      if (body instanceof Readable) {
+        const chunks: Buffer[] = []
+        for await (const chunk of body) {
+          chunks.push(chunk)
+        }
+        const buffer = Buffer.concat(chunks)
+        await writeFile(localVideoPath, buffer)
+        downloadedVideo = true
+        console.log('[UPLOAD] 视频下载完成')
+      } else {
+        throw new Error('无法读取 R2 响应流')
+      }
     }
 
-    console.log('[UPLOAD] 获取视频时长:', fullUrl)
+    console.log('[UPLOAD] 使用 ffprobe 获取时长:', localVideoPath)
 
-    // 使用 ffprobe 获取视频时长
-    const command = `"C:\\ffmpeg\\bin\\ffprobe.exe" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${fullUrl}"`
-    const { stdout } = await execAsync(command, { timeout: 60000 })
+    const command = `"C:\\ffmpeg\\bin\\ffprobe.exe" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${localVideoPath}"`
+    const { stdout } = await execAsync(command, { timeout: 120000 })
 
     const duration = parseFloat(stdout.trim())
     console.log('[UPLOAD] 视频时长:', duration, '秒')
@@ -38,6 +93,16 @@ async function getVideoDuration(videoUrl: string): Promise<number | null> {
   } catch (error: any) {
     console.error('[UPLOAD] 获取视频时长失败:', error?.message || error)
     return null
+  } finally {
+    // 清理下载的临时视频文件
+    if (downloadedVideo && localVideoPath && existsSync(localVideoPath)) {
+      try {
+        await unlink(localVideoPath)
+        console.log('[UPLOAD] 临时视频文件已删除')
+      } catch (e) {
+        console.warn('[UPLOAD] 删除临时视频文件失败:', e)
+      }
+    }
   }
 }
 
@@ -297,19 +362,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: '无权访问' }, { status: 403 })
     }
 
-    const videos = await prisma.video.findMany({
-      include: {
-        subtitles: true,
+    // 使用原始 SQL 查询以避免 Prisma 客户端缓存问题
+    const videos = await prisma.$queryRaw`
+      SELECT
+        v.*,
+        COALESCE(json_agg(s) FILTER (WHERE s.id IS NOT NULL), '[]') as "subtitles"
+      FROM "Video" v
+      LEFT JOIN "Subtitle" s ON v.id = s."videoId"
+      GROUP BY v.id
+      ORDER BY v."displayOrder" ASC NULLS LAST, v."createdAt" DESC
+    `
+
+    // 获取每个视频的单词和表达数数量
+    const videoIds = videos.map((v: any) => v.id)
+    const wordCounts = await prisma.$queryRaw`
+      SELECT "videoId", COUNT(*) as count
+      FROM "Word"
+      WHERE "videoId" = ANY(${videoIds})
+      GROUP BY "videoId"
+    `
+    const expressionCounts = await prisma.$queryRaw`
+      SELECT "videoId", COUNT(*) as count
+      FROM "Expression"
+      WHERE "videoId" = ANY(${videoIds})
+      GROUP BY "videoId"
+    `
+
+    // 组合数据
+    const videosWithCounts = videos.map((v: any) => {
+      const wordCount = wordCounts.find((w: any) => w.videoId === v.id)?.count || 0
+      const expressionCount = expressionCounts.find((e: any) => e.videoId === v.id)?.count || 0
+      return {
+        ...v,
+        subtitles: v.subtitles || [],
         _count: {
-          select: { words: true, expressions: true }
+          words: Number(wordCount),
+          expressions: Number(expressionCount)
         }
-      },
-      orderBy: { createdAt: 'desc' }
+      }
     })
 
     return NextResponse.json({
       success: true,
-      data: { videos }
+      data: { videos: videosWithCounts }
     })
   } catch (error) {
     console.error('Get videos error:', error)

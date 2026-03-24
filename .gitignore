@@ -39,3 +39,26 @@ next-env.d.ts
 nul
 
 .vercel
+
+# Temporary files and directories
+/public/uploads/temp/
+/public/uploads/subtitles/
+*.sql
+check-*.sql
+test-*.sql
+test-*.mjs
+test-*.js
+bypass-*.sql
+disable-*.sql
+fix-*.sql
+force-*.sql
+grant-*.sql
+scripts/generate-subtitles-background.js
+
+# Debug/test APIs
+/app/api/debug/
+/app/api/test-*/
+/app/api/admin/test-*/
+/app/api/admin/batch-update-durations-debug/
+/app/api/admin/check-*/
+/app/api/admin/fix-*/

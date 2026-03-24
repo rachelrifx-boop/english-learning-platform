@@ -215,7 +215,7 @@ function formatSRTTime(seconds: number): string {
 }
 
 /**
- * 翻译字幕内容（使用百度翻译 API）
+ * 翻译字幕内容（使用百度翻译 API）- 优化版，支持批量翻译和并行请求
  * apiKey 格式: "APP_ID,SECRET_KEY"
  */
 export async function translateSubtitleContent(
@@ -230,77 +230,148 @@ export async function translateSubtitleContent(
       throw new Error('百度翻译 API Key 格式错误，应为：APP_ID,SECRET_KEY')
     }
 
-    console.log('开始翻译，使用APP_ID:', appId)
+    console.log('开始翻译（优化版），使用APP_ID:', appId)
 
     // 解析 SRT 格式
     const segments = parseSRT(englishContent)
     console.log('需要翻译的片段数:', segments.length)
 
+    // 将片段分组，每组最多 2000 字符（百度 API 限制）
+    const BATCH_SIZE = 2000
+    const batches: Array<{ segments: typeof segments, startIndex: number }> = []
+    let currentBatch: typeof segments = []
+    let currentLength = 0
+    let currentIndex = 0
+
+    for (const segment of segments) {
+      const segmentLength = segment.text.length
+
+      // 如果单个片段就超过限制，需要单独处理
+      if (segmentLength > BATCH_SIZE) {
+        if (currentBatch.length > 0) {
+          batches.push({ segments: currentBatch, startIndex: currentIndex - currentBatch.length })
+          currentBatch = []
+          currentLength = 0
+        }
+        // 单独处理这个大片段
+        batches.push({ segments: [segment], startIndex: currentIndex })
+        currentIndex++
+        continue
+      }
+
+      // 如果添加这个片段会超过限制，先保存当前批次
+      if (currentLength + segmentLength > BATCH_SIZE && currentBatch.length > 0) {
+        batches.push({ segments: currentBatch, startIndex: currentIndex - currentBatch.length })
+        currentBatch = []
+        currentLength = 0
+      }
+
+      currentBatch.push(segment)
+      currentLength += segmentLength
+      currentIndex++
+    }
+
+    // 保存最后一个批次
+    if (currentBatch.length > 0) {
+      batches.push({ segments: currentBatch, startIndex: currentIndex - currentBatch.length })
+    }
+
+    console.log('分成', batches.length, '个批次进行翻译')
+
+    // 并行处理批次（最多 5 个并发）
+    const CONCURRENCY = 5
+    const results: Array<typeof segments> = []
     let successCount = 0
     let failCount = 0
 
-    // 翻译每个片段（百度 API 标准版不支持批量）
-    const translatedSegments = []
-    for (const segment of segments) {
-      try {
-        // 生成签名
-        const salt = Date.now().toString()
-        const query = segment.text
-        const sign = generateBaiduSign(appId, query, salt, secretKey)
+    for (let i = 0; i < batches.length; i += CONCURRENCY) {
+      const batchGroup = batches.slice(i, i + CONCURRENCY)
+      const groupResults = await Promise.all(
+        batchGroup.map(async ({ segments: batchSegments, startIndex }) => {
+          const batchResults = []
+          for (const segment of batchSegments) {
+            try {
+              // 合并批次中所有文本
+              const query = batchSegments.map(s => s.text).join('\n')
 
-        // 调用百度翻译 API
-        const apiUrl = `https://fanyi-api.baidu.com/api/trans/vip/translate?q=${encodeURIComponent(query)}&from=en&to=zh&appid=${appId}&salt=${salt}&sign=${sign}`
+              // 生成签名
+              const salt = Date.now().toString()
+              const sign = generateBaiduSign(appId, query, salt, secretKey)
 
-        const response = await fetch(apiUrl, {
-          signal: AbortSignal.timeout(10000)  // 增加超时时间到10秒
+              // 调用百度翻译 API
+              const apiUrl = `https://fanyi-api.baidu.com/api/trans/vip/translate?q=${encodeURIComponent(query)}&from=en&to=zh&appid=${appId}&salt=${salt}&sign=${sign}`
+
+              const response = await fetch(apiUrl, {
+                signal: AbortSignal.timeout(30000)
+              })
+
+              const data = await response.json()
+
+              if (data.trans_result && data.trans_result.length > 0) {
+                // 分配翻译结果到各个片段
+                for (let j = 0; j < batchSegments.length; j++) {
+                  batchResults.push({
+                    ...batchSegments[j],
+                    text: data.trans_result[j]?.dst || batchSegments[j].text
+                  })
+                  successCount++
+                }
+                console.log('批次翻译成功:', startIndex + 1, '-', startIndex + batchSegments.length)
+              } else {
+                // 翻译失败，保留原文
+                for (const seg of batchSegments) {
+                  batchResults.push(seg)
+                  failCount++
+                }
+                console.log('批次翻译失败，保留原文:', startIndex)
+              }
+
+              // 只需要处理一次整个批次
+              break
+            } catch (error) {
+              // 批次失败，逐个片段重试
+              for (const segment of batchSegments) {
+                try {
+                  const salt = Date.now().toString()
+                  const query = segment.text
+                  const sign = generateBaiduSign(appId, query, salt, secretKey)
+
+                  const apiUrl = `https://fanyi-api.baidu.com/api/trans/vip/translate?q=${encodeURIComponent(query)}&from=en&to=zh&appid=${appId}&salt=${salt}&sign=${sign}`
+
+                  const response = await fetch(apiUrl, {
+                    signal: AbortSignal.timeout(10000)
+                  })
+
+                  const data = await response.json()
+
+                  if (data.trans_result && data.trans_result[0]) {
+                    batchResults.push({
+                      ...segment,
+                      text: data.trans_result[0].dst
+                    })
+                    successCount++
+                  } else {
+                    batchResults.push(segment)
+                    failCount++
+                  }
+                } catch (e) {
+                  batchResults.push(segment)
+                  failCount++
+                }
+              }
+            }
+          }
+          return batchResults
         })
+      )
 
-        const data = await response.json()
-
-        // 检查响应
-        if (!response.ok) {
-          console.log('翻译片段失败，HTTP状态:', response.status, '片段:', segment.index)
-          failCount++
-          translatedSegments.push(segment)
-          continue
-        }
-
-        // 检查是否有错误码
-        if (data.error_code) {
-          console.log('百度翻译API错误，片段:', segment.index, '错误码:', data.error_code, '错误信息:', data.error_msg)
-          failCount++
-          translatedSegments.push(segment)
-          continue
-        }
-
-        // 百度API成功：只要有trans_result数组就表示成功
-        if (data.trans_result && data.trans_result[0]) {
-          translatedSegments.push({
-            ...segment,
-            text: data.trans_result[0].dst
-          })
-          successCount++
-          console.log('翻译成功片段:', segment.index, '→', data.trans_result[0].dst.substring(0, 30))
-        } else {
-          // 翻译失败，保留原文
-          console.log('翻译片段失败，保留原文:', segment.index, '响应:', JSON.stringify(data).substring(0, 200))
-          failCount++
-          translatedSegments.push(segment)
-        }
-
-        // 避免速率限制（标准版 QPS=1，高级版 QPS=10）
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      } catch (error) {
-        console.log('翻译片段异常，保留原文:', segment.index, '错误:', (error as Error).message)
-        failCount++
-        translatedSegments.push(segment)
-      }
+      results.push(...groupResults.flat())
     }
 
     console.log('翻译完成，成功:', successCount, '失败:', failCount, '总计:', segments.length)
 
     // 生成中文 SRT
-    return generateSRT(translatedSegments)
+    return generateSRT(results)
   } catch (error) {
     console.error('翻译字幕失败:', error)
     throw error

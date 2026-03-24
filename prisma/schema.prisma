@@ -48,6 +48,7 @@ model Video {
   duration    Int             // 秒
   difficulty  String          @db.Text
   category    String?         @db.Text
+  displayOrder Int            @default(0) // 显示排序，数字越小越靠前
   subtitles   Subtitle[]
   words       Word[]
   expressions Expression[]

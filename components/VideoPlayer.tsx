@@ -66,6 +66,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
   const [buffered, setBuffered] = useState(0)
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [showLoopMenu, setShowLoopMenu] = useState(false)
+  const [isVideoLoading, setIsVideoLoading] = useState(true)
+  const [hasStartedLoading, setHasStartedLoading] = useState(false)
 
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
@@ -169,6 +171,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
     const handleLoadedMetadata = () => {
       setDuration(video.duration)
+      setIsVideoLoading(false)
+    }
+
+    const handleCanPlay = () => {
+      setIsVideoLoading(false)
     }
 
     const handleEnded = async () => {
@@ -182,11 +189,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
     video.addEventListener('timeupdate', handleTimeUpdate)
     video.addEventListener('loadedmetadata', handleLoadedMetadata)
+    video.addEventListener('canplay', handleCanPlay)
     video.addEventListener('ended', handleEnded)
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate)
       video.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      video.removeEventListener('canplay', handleCanPlay)
       video.removeEventListener('ended', handleEnded)
     }
   }, [loopMode, loopStart, loopEnd, onTimeUpdate, parsedSubtitles, onSubtitleChange, currentSubtitle])
@@ -447,6 +456,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         <video
           ref={videoRef}
           src={src}
+          preload="auto"
           className="w-full h-full object-contain"
           onClick={(e) => {
             e.stopPropagation() // 阻止事件冒泡到容器
@@ -455,14 +465,29 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
           onError={(e) => {
             console.error('[VideoPlayer] Video load error:', e)
             console.error('[VideoPlayer] Video src:', src)
+            setIsVideoLoading(false)
           }}
           onLoadStart={() => {
             console.log('[VideoPlayer] Video load start:', src)
+            setHasStartedLoading(true)
           }}
-          onCanPlay={() => {
-            console.log('[VideoPlayer] Video can play')
+          onWaiting={() => {
+            setIsVideoLoading(true)
+          }}
+          onPlaying={() => {
+            setIsVideoLoading(false)
           }}
         />
+
+        {/* 加载指示器 */}
+        {isVideoLoading && hasStartedLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 border-4 border-accent/30 border-t-accent rounded-full animate-spin"></div>
+              <p className="text-white text-sm">视频加载中...</p>
+            </div>
+          </div>
+        )}
 
         {/* 浮动控制栏 */}
         {(!hideControls || showBasicControls) && (
