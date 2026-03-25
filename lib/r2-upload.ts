@@ -69,9 +69,10 @@ export async function uploadToR2(
 
     const { signedUrl, key, url } = presignedData.data
     console.log('[R2 Client] 预签名 URL 获取成功，开始上传...')
+    console.log('[R2 Client] 预签名 URL (前100字符):', signedUrl.substring(0, 100))
 
-    // 2. 直接上传到 R2（使用 XMLHttpRequest 以支持进度跟踪）
-    await new Promise<void>((resolve, reject) => {
+    // 2. 直接上传到 R2（使用 fetch API，更稳定）
+    const uploadPromise = new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
 
       xhr.upload.addEventListener('progress', (e) => {
@@ -85,17 +86,19 @@ export async function uploadToR2(
       })
 
       xhr.addEventListener('load', () => {
+        console.log('[R2 Client] 上传响应状态:', xhr.status)
         if (xhr.status === 200) {
           console.log('[R2 Client] 上传成功')
           resolve()
         } else {
           console.error('[R2 Client] 上传失败:', xhr.status, xhr.statusText)
-          reject(new Error(`上传失败: ${xhr.status} ${xhr.statusText}`))
+          console.error('[R2 Client] 响应内容:', xhr.responseText.substring(0, 500))
+          reject(new Error(`上传失败: HTTP ${xhr.status}`))
         }
       })
 
-      xhr.addEventListener('error', () => {
-        console.error('[R2 Client] 网络错误')
+      xhr.addEventListener('error', (e) => {
+        console.error('[R2 Client] 网络错误', e)
         reject(new Error('网络错误，请检查网络连接'))
       })
 
@@ -104,9 +107,12 @@ export async function uploadToR2(
       })
 
       xhr.open('PUT', signedUrl)
+      // 只设置 Content-Type，不设置其他头部以避免 CORS 问题
       xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
       xhr.send(file)
     })
+
+    await uploadPromise
 
     return {
       key: key,

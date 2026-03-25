@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const { PutObjectCommand } = await import('@aws-sdk/client-s3')
     const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner')
 
-    // 创建 R2 客户端
+    // 创建 R2 客户端（禁用校验和以兼容 Cloudflare R2）
     const r2Client = new S3Client({
       region: 'auto',
       endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
         accessKeyId: r2AccessKeyId,
         secretAccessKey: r2SecretAccessKey,
       },
+      // 禁用 MD5 校验和，使用 CRC32
+      disableMultiregionAccessPoints: true,
     })
 
     // 生成 presigned URL（有效期 1 小时）
@@ -65,10 +67,15 @@ export async function POST(request: NextRequest) {
       Bucket: r2BucketName,
       Key: key,
       ContentType: fileType,
+      // 禁用校验和计算，R2 不支持 AWS 的校验和算法
+      ChecksumAlgorithm: undefined,
     })
 
     const signedUrl = await getSignedUrl(r2Client, command, {
       expiresIn: 3600, // 1 小时
+      signableOptions: {
+        // 不添加校验和头部
+      },
     })
 
     console.log('[PRESIGNED URL] 生成成功, URL长度:', signedUrl.length)
