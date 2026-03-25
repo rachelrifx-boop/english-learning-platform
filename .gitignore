@@ -41,8 +41,8 @@ nul
 .vercel
 
 # Temporary files and directories
-/public/uploads/temp/
-/public/uploads/subtitles/
+/public/uploads/
+/prisma/dev.db
 *.sql
 check-*.sql
 test-*.sql
