@@ -10,8 +10,9 @@ export interface UploadResult {
 
 /**
  * 统一的上传接口
- * 优先使用服务器端上传（通过 /api/storage/upload），更稳定
- * 如果服务器端上传失败，降级到 R2 直接上传
+ * 智能选择上传方式：
+ * 1. 小文件（<4.5MB）：服务器端直接上传到 R2
+ * 2. 大文件（>=4.5MB）：使用预签名 URL 客户端直接上传
  *
  * @param file 文件对象
  * @param folder 文件夹路径
@@ -25,9 +26,9 @@ export async function uploadFile(
 ): Promise<UploadResult> {
   console.log('[Storage] 开始上传文件:', file.name, '大小:', (file.size / 1024 / 1024).toFixed(2), 'MB')
 
-  // 优先使用服务器端上传（更稳定，避免 CORS 问题）
+  // 使用服务器端上传 API（会根据文件大小自动选择方式）
   try {
-    console.log('[Storage] 使用服务器端上传（/api/storage/upload）')
+    console.log('[Storage] 使用服务器端上传 API')
 
     const formData = new FormData()
     formData.append('file', file)
@@ -36,7 +37,7 @@ export async function uploadFile(
 
     const xhr = new XMLHttpRequest()
 
-    const uploadPromise = new Promise<{ url: string; key: string }>((resolve, reject) => {
+    const uploadPromise = new Promise<any>((resolve, reject) => {
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && onProgress) {
           const progress = Math.round((e.loaded / e.total) * 100)
@@ -48,12 +49,20 @@ export async function uploadFile(
         if (xhr.status === 200) {
           try {
             const response = JSON.parse(xhr.responseText)
+            console.log('[Storage] 服务器响应:', response)
             if (response.success) {
-              console.log('[Storage] 服务器端上传成功:', response.data)
-              resolve({
-                url: response.data.url || response.data.path,
-                key: response.data.path || response.data.url
-              })
+              // 检查是否需要客户端直接上传
+              if (response.data.useDirectUpload && response.data.presignedUrl) {
+                console.log('[Storage] 需要客户端直接上传到预签名 URL')
+                // 使用预签名 URL 客户端直接上传
+                resolve({ usePresignedUrl: true, presignedUrl: response.data.presignedUrl, key: response.data.key, url: response.data.url })
+              } else {
+                console.log('[Storage] 服务器端上传成功')
+                resolve({
+                  url: response.data.url || response.data.path,
+                  key: response.data.path || response.data.url
+                })
+              }
             } else {
               reject(new Error(response.error || '上传失败'))
             }
@@ -75,6 +84,13 @@ export async function uploadFile(
     })
 
     const result = await uploadPromise
+
+    // 如果返回预签名 URL，使用客户端直接上传
+    if (result.usePresignedUrl) {
+      console.log('[Storage] 使用预签名 URL 客户端直接上传')
+      return await uploadToPresignedUrl(result.presignedUrl, file, onProgress)
+    }
+
     return {
       url: result.url,
       key: result.key
@@ -116,6 +132,55 @@ export async function uploadFile(
       }
     }
   }
+}
+
+/**
+ * 使用预签名 URL 客户端直接上传
+ */
+async function uploadToPresignedUrl(
+  presignedUrl: string,
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<UploadResult> {
+  console.log('[Storage] 使用预签名 URL 上传:', presignedUrl.substring(0, 100))
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        const progress = Math.round((e.loaded / e.total) * 100)
+        onProgress(progress)
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      console.log('[Storage] 预签名 URL 上传响应:', xhr.status)
+      if (xhr.status === 200) {
+        console.log('[Storage] 上传成功')
+        // 从预签名 URL 中提取 key
+        const urlMatch = presignedUrl.match(/\/([^/?]+)\?/)
+        const key = urlMatch ? urlMatch[1] : presignedUrl.split('/').pop()?.split('?')[0] || ''
+        resolve({ url: key, key })
+      } else {
+        console.error('[Storage] 上传失败:', xhr.status, xhr.statusText)
+        reject(new Error(`上传失败: HTTP ${xhr.status}`))
+      }
+    })
+
+    xhr.addEventListener('error', (e) => {
+      console.error('[Storage] 网络错误', e)
+      reject(new Error('网络错误，请检查网络连接'))
+    })
+
+    xhr.addEventListener('abort', () => {
+      reject(new Error('上传已取消'))
+    })
+
+    xhr.open('PUT', presignedUrl)
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+    xhr.send(file)
+  })
 }
 
 /**
