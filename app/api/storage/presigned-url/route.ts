@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createHmac } from 'crypto'
 
 // R2 配置
 const r2AccountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
@@ -45,38 +46,8 @@ export async function POST(request: NextRequest) {
 
     console.log('[PRESIGNED URL] 生成预签名 URL:', key)
 
-    // 动态导入 AWS SDK 以避免 Vercel Edge 打包问题
-    const { S3Client } = await import('@aws-sdk/client-s3')
-    const { PutObjectCommand } = await import('@aws-sdk/client-s3')
-    const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner')
-
-    // 创建 R2 客户端（禁用校验和以兼容 Cloudflare R2）
-    const r2Client = new S3Client({
-      region: 'auto',
-      endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: r2AccessKeyId,
-        secretAccessKey: r2SecretAccessKey,
-      },
-      // 禁用 MD5 校验和，使用 CRC32
-      disableMultiregionAccessPoints: true,
-    })
-
-    // 生成 presigned URL（有效期 1 小时）
-    const command = new PutObjectCommand({
-      Bucket: r2BucketName,
-      Key: key,
-      ContentType: fileType,
-      // 禁用校验和计算，R2 不支持 AWS 的校验和算法
-      ChecksumAlgorithm: undefined,
-    })
-
-    const signedUrl = await getSignedUrl(r2Client, command, {
-      expiresIn: 3600, // 1 小时
-      signableOptions: {
-        // 不添加校验和头部
-      },
-    })
+    // 手动生成预签名 URL（完全控制，避免 AWS SDK 添加不需要的参数）
+    const signedUrl = generatePresignedUrl(r2AccountId, r2AccessKeyId, r2SecretAccessKey, r2BucketName, key, fileType)
 
     console.log('[PRESIGNED URL] 生成成功, URL长度:', signedUrl.length)
 
@@ -103,4 +74,75 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/**
+ * 手动生成 R2 预签名 URL（AWS S3 兼容）
+ * 完全控制签名过程，避免 AWS SDK 添加校验和等不需要的参数
+ */
+function generatePresignedUrl(
+  accountId: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucketName: string,
+  key: string,
+  contentType: string,
+  expiresIn: number = 3600
+): string {
+  const expiration = Math.floor(Date.now() / 1000) + expiresIn
+  const endpoint = `https://${accountId}.r2.cloudflarestorage.com`
+
+  // 构建 URL
+  const url = new URL(`${endpoint}/${bucketName}/${key}`)
+
+  // AWS S3 签名参数（V4 签名）
+  const algorithm = 'AWS4-HMAC-SHA256'
+  const service = 's3'
+  const region = 'auto'
+  const date = new Date()
+  const dateStamp = date.toISOString().split('T')[0].replace(/-/g, '')
+  const timeString = date.toISOString().replace(/[:\-]|\.\d+/g, '')
+
+  // 查询参数
+  url.searchParams.set('X-Amz-Algorithm', algorithm)
+  url.searchParams.set('X-Amz-Credential', `${accessKeyId}/${dateStamp}/${region}/${service}/aws4_request`)
+  url.searchParams.set('X-Amz-Date', timeString)
+  url.searchParams.set('X-Amz-Expires', expiresIn.toString())
+  url.searchParams.set('X-Amz-SignedHeaders', 'content-type;host')
+
+  // 构建待签名字符串
+  const method = 'PUT'
+  const canonicalUri = `/${bucketName}/${key}`
+  const canonicalQueryString = url.searchParams.toString()
+  const canonicalHeaders = `content-type:${contentType}\nhost:${url.host}\n`
+  const signedHeaders = 'content-type;host'
+  const payloadHash = 'UNSIGNED-PAYLOAD'
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash
+  ].join('\n')
+
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
+  const stringToSign = [
+    algorithm,
+    timeString,
+    credentialScope,
+    createHmac('sha256', canonicalRequest).digest('hex')
+  ].join('\n')
+
+  // 计算签名
+  const kDate = createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+  const kRegion = createHmac('sha256', kDate).update(region).digest()
+  const kService = createHmac('sha256', kRegion).update(service).digest()
+  const kSigning = createHmac('sha256', kService).update('aws4_request').digest()
+  const signature = createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+  url.searchParams.set('X-Amz-Signature', signature)
+
+  return url.toString()
 }
