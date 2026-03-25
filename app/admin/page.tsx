@@ -108,8 +108,16 @@ export default function AdminPage() {
 
     try {
       // 1. 上传视频文件到云端存储（R2或Supabase）
-      setUploadStatus('正在上传视频...')
-      const videoResult = await uploadFile(files.video, 'videos')
+      // 对于大文件，使用预签名 URL 直接上传，绕过 Vercel 的大小限制
+      setUploadStatus('正在上传视频到云端...')
+      const videoResult = await uploadFile(
+        files.video,
+        'videos',
+        (progress) => {
+          // 上传进度 0-60%
+          setUploadProgress(Math.round(progress * 0.6))
+        }
+      )
 
       if (videoResult.error || !videoResult.url) {
         alert(`视频上传失败: ${videoResult.error}`)
@@ -117,7 +125,7 @@ export default function AdminPage() {
         return
       }
 
-      setUploadProgress(20)
+      setUploadProgress(65)
       setUploadStatus('视频上传成功，正在生成封面...')
 
       // 2. 自动截取视频首帧作为封面（如果没有手动上传封面）
@@ -150,7 +158,7 @@ export default function AdminPage() {
         }
       }
 
-      setUploadProgress(40)
+      setUploadProgress(75)
       setUploadStatus('正在上传字幕...')
 
       // 3. 上传字幕文件

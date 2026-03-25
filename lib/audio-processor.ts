@@ -365,13 +365,13 @@ export async function translateSubtitleContent(
         })
       )
 
-      results.push(...groupResults.flat())
+      results.push(...(groupResults.flat() as any))
     }
 
     console.log('翻译完成，成功:', successCount, '失败:', failCount, '总计:', segments.length)
 
-    // 生成中文 SRT
-    return generateSRT(results)
+    // 生成中文 SRT（展平数组）
+    return generateSRT((results as any).flat())
   } catch (error) {
     console.error('翻译字幕失败:', error)
     throw error

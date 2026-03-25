@@ -72,10 +72,11 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    // 使用 'lax' 模式以更好地支持各种浏览器环境
     response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 7 // 7 days
     })

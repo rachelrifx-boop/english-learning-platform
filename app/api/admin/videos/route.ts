@@ -362,49 +362,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: '无权访问' }, { status: 403 })
     }
 
-    // 使用原始 SQL 查询以避免 Prisma 客户端缓存问题
-    const videos = await prisma.$queryRaw`
-      SELECT
-        v.*,
-        COALESCE(json_agg(s) FILTER (WHERE s.id IS NOT NULL), '[]') as "subtitles"
-      FROM "Video" v
-      LEFT JOIN "Subtitle" s ON v.id = s."videoId"
-      GROUP BY v.id
-      ORDER BY v."displayOrder" ASC NULLS LAST, v."createdAt" DESC
-    `
-
-    // 获取每个视频的单词和表达数数量
-    const videoIds = videos.map((v: any) => v.id)
-    const wordCounts = await prisma.$queryRaw`
-      SELECT "videoId", COUNT(*) as count
-      FROM "Word"
-      WHERE "videoId" = ANY(${videoIds})
-      GROUP BY "videoId"
-    `
-    const expressionCounts = await prisma.$queryRaw`
-      SELECT "videoId", COUNT(*) as count
-      FROM "Expression"
-      WHERE "videoId" = ANY(${videoIds})
-      GROUP BY "videoId"
-    `
-
-    // 组合数据
-    const videosWithCounts = videos.map((v: any) => {
-      const wordCount = wordCounts.find((w: any) => w.videoId === v.id)?.count || 0
-      const expressionCount = expressionCounts.find((e: any) => e.videoId === v.id)?.count || 0
-      return {
-        ...v,
-        subtitles: v.subtitles || [],
+    const videos = await prisma.video.findMany({
+      include: {
+        subtitles: true,
         _count: {
-          words: Number(wordCount),
-          expressions: Number(expressionCount)
+          select: { words: true, expressions: true }
         }
-      }
+      },
+      orderBy: { createdAt: 'desc' }
     })
 
     return NextResponse.json({
       success: true,
-      data: { videos: videosWithCounts }
+      data: { videos }
     })
   } catch (error) {
     console.error('Get videos error:', error)

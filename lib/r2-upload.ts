@@ -1,6 +1,6 @@
 /**
  * Cloudflare R2 上传模块（客户端版本）
- * 通过服务器端 API 进行上传，避免在浏览器中暴露凭证和 CORS 问题
+ * 使用预签名 URL 直接上传到 R2，绕过 Vercel 的大小限制
  */
 
 export interface UploadResult {
@@ -10,56 +10,107 @@ export interface UploadResult {
 }
 
 /**
- * 上传文件到Cloudflare R2（通过服务器端 API）
+ * 上传文件到Cloudflare R2（使用预签名 URL，直接上传）
  * @param file 文件对象
  * @param folder 文件夹路径（如：'videos', 'covers', 'subtitles'）
+ * @param onProgress 上传进度回调（0-100）
  * @returns 上传结果
  */
 export async function uploadToR2(
   file: File,
-  folder: string = 'videos'
+  folder: string = 'videos',
+  onProgress?: (progress: number) => void
 ): Promise<UploadResult> {
   try {
-    console.log(`[R2 Client] 开始上传文件: ${file.name} 到 ${folder}`)
+    console.log(`[R2 Client] 开始上传文件: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB) 到 ${folder}`)
 
-    // 使用 FormData 包装文件
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('bucket', 'videos')
-    formData.append('folder', folder)
-
-    // 调用服务器端 API（使用环境变量中的凭证，安全上传）
-    const response = await fetch('/api/storage/upload', {
+    // 1. 获取预签名 URL
+    const presignedResponse = await fetch('/api/storage/presigned-url', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        folder
+      })
     })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[R2 Client] 上传失败:', response.status, errorText)
+    if (!presignedResponse.ok) {
+      const errorText = await presignedResponse.text()
+      console.error('[R2 Client] 获取预签名 URL 失败:', presignedResponse.status, errorText)
       return {
         key: '',
         url: '',
-        error: `HTTP ${response.status}: ${errorText || '上传失败'}`
+        error: `获取上传凭证失败 (HTTP ${presignedResponse.status}): ${errorText.substring(0, 200)}`
       }
     }
 
-    const result = await response.json()
-
-    if (!result.success) {
-      console.error('[R2 Client] 上传失败:', result.error)
+    let presignedData
+    try {
+      presignedData = await presignedResponse.json()
+    } catch (parseError) {
+      const errorText = await presignedResponse.text()
+      console.error('[R2 Client] 解析响应失败:', errorText.substring(0, 200))
       return {
         key: '',
         url: '',
-        error: result.error || '上传失败'
+        error: `服务器返回了无效的响应: ${errorText.substring(0, 100)}`
       }
     }
 
-    console.log('[R2 Client] 上传成功:', result.data.path)
+    if (!presignedData.success) {
+      console.error('[R2 Client] 获取预签名 URL 失败:', presignedData.error)
+      return {
+        key: '',
+        url: '',
+        error: presignedData.error || '获取上传凭证失败'
+      }
+    }
+
+    const { signedUrl, key, url } = presignedData.data
+    console.log('[R2 Client] 预签名 URL 获取成功，开始上传...')
+
+    // 2. 直接上传到 R2（使用 XMLHttpRequest 以支持进度跟踪）
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100)
+          console.log(`[R2 Client] 上传进度: ${progress}%`)
+          if (onProgress) {
+            onProgress(progress)
+          }
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          console.log('[R2 Client] 上传成功')
+          resolve()
+        } else {
+          console.error('[R2 Client] 上传失败:', xhr.status, xhr.statusText)
+          reject(new Error(`上传失败: ${xhr.status} ${xhr.statusText}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        console.error('[R2 Client] 网络错误')
+        reject(new Error('网络错误，请检查网络连接'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('上传已取消'))
+      })
+
+      xhr.open('PUT', signedUrl)
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+      xhr.send(file)
+    })
 
     return {
-      key: result.data.path,
-      url: result.data.url,
+      key: key,
+      url: url // 返回相对路径
     }
   } catch (error) {
     console.error('[R2 Client] 上传文件失败:', error)
