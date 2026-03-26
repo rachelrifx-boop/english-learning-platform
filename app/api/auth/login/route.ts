@@ -22,6 +22,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 测试数据库连接
+    try {
+      await prisma.$connect()
+      console.log('[LOGIN] 数据库连接成功')
+    } catch (dbError) {
+      console.error('[LOGIN] 数据库连接失败:', dbError)
+      return NextResponse.json(
+        { success: false, error: '数据库连接失败，请稍后重试' },
+        { status: 500 }
+      )
+    }
+
     // 查找用户
     const user = await prisma.user.findUnique({
       where: { email }
