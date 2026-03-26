@@ -159,8 +159,14 @@ async function uploadToPresignedUrl(
       if (xhr.status === 200) {
         console.log('[Storage] 上传成功')
         // 从预签名 URL 中提取 key
-        const urlMatch = presignedUrl.match(/\/([^/?]+)\?/)
-        const key = urlMatch ? urlMatch[1] : presignedUrl.split('/').pop()?.split('?')[0] || ''
+        // R2 预签名 URL 格式: https://xxx.r2.cloudflarestorage.com/bucket/folder/file.mp4?...
+        // 需要提取 bucket 之后的部分
+        const urlObj = new URL(presignedUrl)
+        const pathParts = urlObj.pathname.split('/')
+        // 跳过 bucket name，保留 folder/file
+        // 例如: /english-learning-videos/videos/xxx.mp4 -> videos/xxx.mp4
+        const key = pathParts.slice(2).join('/')
+        console.log('[Storage] 提取的 key:', key)
         resolve({ url: key, key })
       } else {
         console.error('[Storage] 上传失败:', xhr.status, xhr.statusText)
