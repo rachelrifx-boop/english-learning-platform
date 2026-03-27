@@ -56,7 +56,8 @@ async function getVideoDuration(videoUrl: string): Promise<number | null> {
 
       const command = new GetObjectCommand({
         Bucket: r2BucketName,
-        Key: videoUrl,
+        // 如果 videoUrl 不以 videos/ 开头，添加前缀
+        Key: videoUrl.startsWith('videos/') ? videoUrl : `videos/${videoUrl}`,
       })
 
       const response = await r2Client.send(command)

@@ -62,3 +62,10 @@ scripts/generate-subtitles-background.js
 /app/api/admin/batch-update-durations-debug/
 /app/api/admin/check-*/
 /app/api/admin/fix-*/
+
+# Temporary debug/test files
+check_*.js
+fix_*.js
+test_*.js
+duration_*.txt
+update_*.js

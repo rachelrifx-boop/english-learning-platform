@@ -171,7 +171,9 @@ export async function POST(request: NextRequest) {
       // 本地没有，尝试从 R2 下载
       console.log('[INFO] 本地无视频文件，开始从 R2 下载...')
       try {
-        localVideoPath = await downloadVideoFromR2(video.filePath)
+        // 如果 filePath 不以 videos/ 开头，添加前缀
+        const r2Key = video.filePath.startsWith('videos/') ? video.filePath : `videos/${video.filePath}`
+        localVideoPath = await downloadVideoFromR2(r2Key)
       } catch (e: any) {
         console.error('[ERROR] R2 下载失败:', e.message)
         throw new Error(`无法获取视频文件: ${e.message}`)
