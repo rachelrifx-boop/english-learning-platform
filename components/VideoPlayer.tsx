@@ -648,16 +648,16 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         </div>
 
         {/* 第二行：倍速和循环控制 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* 倍速控制 */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">播放速度</span>
-            <div className="flex items-center gap-1 bg-surface rounded-lg p-1 flex-wrap">
+            <div className="flex items-center gap-1 bg-surface rounded-lg p-1">
               {speeds.map((speed) => (
                 <button
                   key={speed}
                   onClick={() => changePlaybackRate(speed)}
-                  className={`px-2.5 py-1 text-sm rounded-md transition-all ${
+                  className={`px-2 py-1 text-sm rounded-md transition-all ${
                     playbackRate === speed
                       ? 'bg-accent text-white font-medium shadow-lg'
                       : 'text-gray-400 hover:text-gray-300 hover:bg-surface-light'
@@ -670,17 +670,20 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             </div>
           </div>
 
+          {/* 分隔符 */}
+          <div className="h-6 w-px bg-gray-700"></div>
+
           {/* 循环模式控制 */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">循环模式</span>
-            <div className="flex items-center gap-1 flex-wrap">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => {
                   updateLoopMode('none')
                   setLoopStart(null)
                   setLoopEnd(null)
                 }}
-                className={`px-2.5 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
+                className={`px-2 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
                   loopMode === 'none'
                     ? 'bg-accent text-white font-medium'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-surface-light'
@@ -691,7 +694,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
               <button
                 onClick={() => updateLoopMode('all')}
-                className={`px-2.5 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
+                className={`px-2 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
                   loopMode === 'all'
                     ? 'bg-accent text-white font-medium'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-surface-light'
@@ -703,7 +706,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
               <button
                 onClick={setABLoopStart}
-                className={`px-2.5 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
+                className={`px-2 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
                   loopMode === 'ab' && loopStart !== null && loopEnd === null
                     ? 'bg-accent text-white font-medium'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-surface-light'
@@ -717,7 +720,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
               {loopMode === 'ab' && loopStart !== null && loopEnd === null && (
                 <button
                   onClick={setABLoopEnd}
-                  className="px-2.5 py-1 text-sm rounded-md bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-all font-medium animate-pulse"
+                  className="px-2 py-1 text-sm rounded-md bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-all font-medium animate-pulse"
                 >
                   设置终点
                 </button>
