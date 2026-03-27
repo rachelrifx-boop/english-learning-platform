@@ -1254,7 +1254,7 @@ export default function VideoPage() {
               </div>
 
               {currentSubtitle ? (
-                <div className="space-y-2">
+                <div className="text-center space-y-2">
                   {/* 英文字幕 */}
                   <div className="text-lg sm:text-xl text-white font-medium leading-relaxed">
                     {currentSubtitle.text.en}
