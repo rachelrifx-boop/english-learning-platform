@@ -1229,43 +1229,52 @@ export default function VideoPage() {
               onSubtitleChange={handleSubtitleChange}
             />
 
-            {/* 视频信息 - 紧凑布局 */}
-            <div className="bg-surface-light rounded-xl p-3 sm:p-4">
-              <div className="flex items-start justify-between mb-2">
-                <h2 className="text-xl font-heading font-bold text-white line-clamp-1 flex-1">
-                  {video.title}
-                </h2>
-                <button
-                  onClick={toggleVideoFavorite}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isFavorited
-                      ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20'
-                      : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-400/10'
-                  }`}
-                  title={isFavorited ? '取消收藏' : '收藏'}
-                >
-                  <Star size={20} fill={isFavorited ? 'currentColor' : 'none'} />
-                </button>
-              </div>
-
-              {video.description && (
-                <p className="text-sm text-gray-400 mb-2 line-clamp-1">{video.description}</p>
-              )}
-
-              <div className="flex items-center gap-2 text-xs flex-wrap">
-                <div className="flex items-center gap-1 text-gray-400">
-                  <Clock size={12} />
-                  {Math.floor(video.duration / 60)}:{(video.duration % 60).toString().padStart(2, '0')}
+            {/* 当前播放字幕显示 */}
+            <div className="bg-surface-light rounded-xl p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">当前字幕</h3>
+                <div className="flex items-center gap-2">
+                  {video.category && (
+                    <span className="px-2 py-0.5 bg-accent/20 text-accent rounded-full text-xs">
+                      {video.difficulty}
+                    </span>
+                  )}
+                  <button
+                    onClick={toggleVideoFavorite}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      isFavorited
+                        ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20'
+                        : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-400/10'
+                    }`}
+                    title={isFavorited ? '取消收藏' : '收藏'}
+                  >
+                    <Star size={16} fill={isFavorited ? 'currentColor' : 'none'} />
+                  </button>
                 </div>
-                <span className="px-2 py-0.5 bg-accent/20 text-accent rounded-full text-xs">
-                  {video.difficulty}
-                </span>
-                {video.category && (
-                  <span className="px-2 py-0.5 bg-surface text-gray-300 rounded-full text-xs">
-                    {categoryTranslations[video.category] || video.category}
-                  </span>
-                )}
               </div>
+
+              {currentSubtitle ? (
+                <div className="space-y-2">
+                  {/* 英文字幕 */}
+                  <div className="text-lg sm:text-xl text-white font-medium leading-relaxed">
+                    {currentSubtitle.text.en}
+                  </div>
+                  {/* 中文字幕 */}
+                  {currentSubtitle.text.zh && (
+                    <div className="text-sm sm:text-base text-gray-400 leading-relaxed">
+                      {currentSubtitle.text.zh}
+                    </div>
+                  )}
+                  {/* 时间戳 */}
+                  <div className="text-xs text-gray-500 font-mono">
+                    {formatTime(currentSubtitle.startTime / 1000)} - {formatTime(currentSubtitle.endTime / 1000)}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 py-6">
+                  <p>播放视频以显示字幕</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1350,4 +1359,11 @@ export default function VideoPage() {
       </main>
     </div>
   )
+}
+
+// 格式化时间显示
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
 }

@@ -598,60 +598,45 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
       {/* 外部控制面板 - 紧凑布局 */}
       {!hideControls && (
-      <div className="bg-surface-light rounded-xl p-3 sm:p-4 space-y-3">
-        {/* 第一行：字幕导航 */}
+      <div className="bg-surface-light rounded-xl p-3 sm:p-4">
+        {/* 所有控制项并排成一行 */}
         <div className="flex items-center justify-between flex-wrap gap-2">
+          {/* 字幕导航 */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500 uppercase tracking-wide">字幕导航</span>
+            <span className="text-xs text-gray-500 uppercase tracking-wide">字幕</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={goToPreviousSubtitle}
-                className="flex items-center gap-1 px-3 py-2 bg-surface text-gray-300 rounded-lg hover:bg-surface-light hover:text-accent transition-all active:scale-95"
+                className="flex items-center gap-1 px-2 py-1.5 bg-surface text-gray-300 rounded-lg hover:bg-surface-light hover:text-accent transition-all active:scale-95"
                 title="上一句 (P)"
               >
                 <SkipBack size={14} />
-                <span className="text-sm font-medium">上一句</span>
               </button>
 
               <button
                 onClick={replayCurrentSubtitle}
-                className="flex items-center gap-1 px-3 py-2 bg-surface text-gray-300 rounded-lg hover:bg-surface-light hover:text-accent transition-all active:scale-95"
+                className="flex items-center gap-1 px-2 py-1.5 bg-surface text-gray-300 rounded-lg hover:bg-surface-light hover:text-accent transition-all active:scale-95"
                 title="重播当前句 (R)"
               >
                 <RotateCcw size={14} />
-                <span className="text-sm font-medium">重播</span>
               </button>
 
               <button
                 onClick={goToNextSubtitle}
-                className="flex items-center gap-1 px-3 py-2 bg-surface text-gray-300 rounded-lg hover:bg-surface-light hover:text-accent transition-all active:scale-95"
+                className="flex items-center gap-1 px-2 py-1.5 bg-surface text-gray-300 rounded-lg hover:bg-surface-light hover:text-accent transition-all active:scale-95"
                 title="下一句 (N)"
               >
                 <SkipForward size={14} />
-                <span className="text-sm font-medium">下一句</span>
               </button>
             </div>
           </div>
 
-          {/* 键盘快捷键提示 */}
-          <div className="hidden lg:flex items-center gap-2 text-xs text-gray-500">
-            <span className="flex items-center gap-1">
-              <kbd className="px-1 py-0.5 bg-surface rounded text-gray-400">空格</kbd> 播放
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="px-1 py-0.5 bg-surface rounded text-gray-400">←→</kbd> 快进
-            </span>
-            <span className="flex items-center gap-1">
-              <kbd className="px-1 py-0.5 bg-surface rounded text-gray-400">F</kbd> 全屏
-            </span>
-          </div>
-        </div>
+          {/* 分隔符 */}
+          <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
 
-        {/* 第二行：倍速和循环控制 */}
-        <div className="flex flex-wrap items-center gap-3">
           {/* 倍速控制 */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">播放速度</span>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500 uppercase tracking-wide">速度</span>
             <div className="flex items-center gap-1 bg-surface rounded-lg p-1">
               {speeds.map((speed) => (
                 <button
@@ -671,11 +656,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
           </div>
 
           {/* 分隔符 */}
-          <div className="h-6 w-px bg-gray-700"></div>
+          <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
 
           {/* 循环模式控制 */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 uppercase tracking-wide whitespace-nowrap">循环模式</span>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500 uppercase tracking-wide">循环</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => {
@@ -683,13 +668,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                   setLoopStart(null)
                   setLoopEnd(null)
                 }}
-                className={`px-2 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${
+                className={`px-2 py-1 text-sm rounded-md transition-all ${
                   loopMode === 'none'
                     ? 'bg-accent text-white font-medium'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-surface-light'
                 }`}
               >
-                关闭
+                关
               </button>
 
               <button
@@ -728,12 +713,22 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
               {/* 循环提示 */}
               {loopMode === 'ab' && loopStart !== null && loopEnd !== null && (
-                <div className="flex items-center gap-1.5 text-xs text-accent bg-accent/10 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-1 text-xs text-accent bg-accent/10 px-2 py-1 rounded">
                   <Clock size={10} />
-                  <span className="font-mono">{formatTime(loopStart)} - {formatTime(loopEnd)}</span>
+                  <span className="font-mono">{formatTime(loopStart)}-{formatTime(loopEnd)}</span>
                 </div>
               )}
             </div>
+          </div>
+
+          {/* 键盘快捷键提示 - 仅在大屏幕显示 */}
+          <div className="hidden xl:flex items-center gap-2 text-xs text-gray-500">
+            <span className="flex items-center gap-1">
+              <kbd className="px-1 py-0.5 bg-surface rounded text-gray-400">空格</kbd>
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1 py-0.5 bg-surface rounded text-gray-400">F</kbd>
+            </span>
           </div>
         </div>
 
