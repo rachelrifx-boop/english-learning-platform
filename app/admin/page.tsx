@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles, RefreshCw, GripVertical } from 'lucide-react'
+import { Film, Upload, Trash2, Clock, Subtitles, Key, Edit3, X, Save, AlertCircle, Sparkles, RefreshCw, GripVertical, ImagePlus } from 'lucide-react'
 import { uploadFile } from '@/lib/storage'
 
 interface Video {
@@ -55,6 +55,8 @@ export default function AdminPage() {
   const [draggedItem, setDraggedItem] = useState<string | null>(null)
   const [isReordering, setIsReordering] = useState(false)
   const [updatingDuration, setUpdatingDuration] = useState(false)
+  const [generatingCover, setGeneratingCover] = useState(false)
+  const [generatingCoverVideoId, setGeneratingCoverVideoId] = useState<string | null>(null)
 
   // 上传表单状态
   const [formData, setFormData] = useState({
@@ -511,6 +513,96 @@ export default function AdminPage() {
     }
   }
 
+  // 为视频生成封面
+  const handleGenerateCover = async (video: Video) => {
+    if (!confirm(`确定要为视频 "${video.title}" 生成封面吗？\n\n系统会从 R2 下载视频并截取首帧作为封面。`)) {
+      return
+    }
+
+    setGeneratingCover(true)
+    setGeneratingCoverVideoId(video.id)
+
+    try {
+      console.log('[GENERATE COVER] 开始生成封面，视频:', video.title, '路径:', video.filePath)
+
+      const response = await fetch('/api/admin/extract-cover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl: video.filePath })
+      })
+
+      console.log('[GENERATE COVER] extract-cover 响应状态:', response.status)
+
+      // 检查响应是否为 JSON
+      const contentType = response.headers.get('content-type')
+      console.log('[GENERATE COVER] 响应类型:', contentType)
+
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('[GENERATE COVER] API 错误响应:', text)
+        alert('生成封面失败：HTTP ' + response.status)
+        return
+      }
+
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error('[GENERATE COVER] 非 JSON 响应:', text.substring(0, 200))
+        alert('生成封面失败：服务器返回非 JSON 响应')
+        return
+      }
+
+      const data = await response.json()
+      console.log('[GENERATE COVER] 封面提取结果:', data)
+
+      if (!data.success) {
+        alert(data.error || '生成封面失败')
+        return
+      }
+
+      // 更新视频的封面
+      console.log('[GENERATE COVER] 开始更新视频封面:', data.data.coverUrl)
+      const updateResponse = await fetch(`/api/admin/videos/${video.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverPath: data.data.coverUrl })
+      })
+
+      console.log('[GENERATE COVER] 更新视频响应状态:', updateResponse.status)
+
+      if (!updateResponse.ok) {
+        const text = await updateResponse.text()
+        console.error('[GENERATE COVER] 更新视频 API 错误:', text)
+        alert('封面生成成功，但更新视频失败：HTTP ' + updateResponse.status)
+        return
+      }
+
+      const updateContentType = updateResponse.headers.get('content-type')
+      if (!updateContentType || !updateContentType.includes('application/json')) {
+        const text = await updateResponse.text()
+        console.error('[GENERATE COVER] 更新视频非 JSON 响应:', text.substring(0, 200))
+        alert('封面生成成功，但更新视频失败：服务器返回非 JSON 响应')
+        return
+      }
+
+      const updateData = await updateResponse.json()
+
+      if (!updateData.success) {
+        alert('封面生成成功，但更新视频失败：' + (updateData.error || '未知错误'))
+        return
+      }
+
+      alert('封面生成成功！')
+
+      fetchVideos()
+    } catch (error: any) {
+      console.error('生成封面失败:', error)
+      alert('生成封面失败：' + (error.message || '请稍后重试'))
+    } finally {
+      setGeneratingCover(false)
+      setGeneratingCoverVideoId(null)
+    }
+  }
+
   // 批量更新所有视频时长
   const handleBatchUpdateDurations = async () => {
     if (!confirm('确定要批量更新所有视频的时长吗？\n\n这将使用 ffprobe 获取每个视频的实际时长，可能需要几分钟时间。请耐心等待，不要关闭页面。')) {
@@ -926,6 +1018,16 @@ export default function AdminPage() {
                     >
                       <Edit3 size={16} />
                       编辑
+                    </button>
+                  )}
+                  {!video.coverPath && (
+                    <button
+                      onClick={() => handleGenerateCover(video)}
+                      disabled={generatingCover && generatingCoverVideoId === video.id}
+                      className="px-3 py-2 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="生成封面"
+                    >
+                      <ImagePlus size={16} className={generatingCover && generatingCoverVideoId === video.id ? 'animate-pulse' : ''} />
                     </button>
                   )}
                   <button

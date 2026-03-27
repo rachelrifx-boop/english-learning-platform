@@ -59,15 +59,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { title, description, difficulty, category } = body
-
-    // 验证必填字段
-    if (!title || !difficulty) {
-      return NextResponse.json(
-        { success: false, error: '请填写所有必填字段' },
-        { status: 400 }
-      )
-    }
+    const { title, description, difficulty, category, coverPath } = body
 
     // 检查视频是否存在
     const existingVideo = await prisma.video.findUnique({
@@ -78,15 +70,19 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: '视频不存在' }, { status: 404 })
     }
 
+    // 构建更新数据对象（只更新提供的字段）
+    const updateData: any = {}
+
+    if (title !== undefined) updateData.title = title
+    if (description !== undefined) updateData.description = description || null
+    if (difficulty !== undefined) updateData.difficulty = difficulty
+    if (category !== undefined) updateData.category = category || null
+    if (coverPath !== undefined) updateData.coverPath = coverPath || null
+
     // 更新视频
     const updatedVideo = await prisma.video.update({
       where: { id: params.id },
-      data: {
-        title,
-        description: description || null,
-        difficulty: difficulty as any,
-        category: category || null
-      },
+      data: updateData,
       include: {
         subtitles: true
       }
