@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Scroll, Play, Book, Star, FileText, Mic, Copy, Volume2, X, Headphones, PenTool, Eye, EyeOff, Edit2, Languages } from 'lucide-react'
+import { Scroll, Play, Book, Star, FileText, Mic, Copy, Volume2, X, Headphones, PenTool, Eye, EyeOff, Edit2, Languages, Printer } from 'lucide-react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { SentencePhoneticsDisplay } from './SentencePhonetics'
 import { EnhancedSubtitleHighlight } from './EnhancedSubtitleHighlight'
@@ -68,6 +68,7 @@ interface SubtitlePanelProps {
   hideHeader?: boolean
   isMobile?: boolean
   mobileFunctionMode?: 'none' | 'follow' | 'dictation'
+  onPrintSubtitles?: () => void
 }
 
 export function SubtitlePanel({
@@ -103,6 +104,7 @@ export function SubtitlePanel({
   hideHeader = false,
   isMobile = false,
   mobileFunctionMode = 'none',
+  onPrintSubtitles,
 }: SubtitlePanelProps) {
   const [autoScroll, setAutoScroll] = useState(true)
   const [expandedSubtitle, setExpandedSubtitle] = useState<number | null>(null)
@@ -312,6 +314,16 @@ export function SubtitlePanel({
               />
               自动滚动
             </label>
+            {/* 打印字幕按钮 */}
+            {onPrintSubtitles && (
+              <button
+                onClick={onPrintSubtitles}
+                className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
+                title="打印全部字幕"
+              >
+                <Printer size={18} />
+              </button>
+            )}
           </div>
         </div>
       )}

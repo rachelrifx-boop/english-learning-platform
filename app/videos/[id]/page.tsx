@@ -1124,6 +1124,7 @@ export default function VideoPage() {
               hideHeader={true}
               isMobile={true}
               mobileFunctionMode={mobileFunctionMode}
+              onPrintSubtitles={handlePrintSubtitles}
             />
           </div>
 
@@ -1341,6 +1342,7 @@ export default function VideoPage() {
                 isAdmin={isAdmin}
                 videoId={videoId}
                 onSubtitleUpdate={handleSubtitleUpdate}
+                onPrintSubtitles={handlePrintSubtitles}
               />
             </div>
           </div>
