@@ -62,49 +62,80 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
   return videoPath
 }
 
-// 使用 ffprobe 获取视频时长
-async function getVideoDuration(videoPath: string, videoId: string): Promise<number | null> {
+// 使用 ffprobe 获取视频时长（带重试机制）
+async function getVideoDuration(videoPath: string, videoId: string, retries = 2): Promise<number | null> {
   let localVideoPath: string | null = null
   let downloadedVideo = false
+  let lastError: any = null
 
-  try {
-    // 首先尝试本地路径
-    const localPath = path.join(process.cwd(), 'public', videoPath)
-    if (existsSync(localPath)) {
-      console.log('[BATCH UPDATE] 使用本地视频文件')
-      localVideoPath = localPath
-    } else {
-      // 本地没有，从 R2 下载
-      console.log('[BATCH UPDATE] 本地无视频，从 R2 下载...')
-      localVideoPath = await downloadVideoFromR2(videoPath, videoId)
-      downloadedVideo = true
-    }
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // 首先尝试本地路径
+      const localPath = path.join(process.cwd(), 'public', videoPath)
+      if (existsSync(localPath)) {
+        console.log('[BATCH UPDATE] 使用本地视频文件')
+        localVideoPath = localPath
+      } else {
+        // 本地没有，从 R2 下载
+        console.log(`[BATCH UPDATE] 本地无视频，从 R2 下载... (尝试 ${attempt + 1}/${retries + 1})`)
+        // 如果 videoPath 不以 videos/ 开头，添加前缀
+        const r2Key = videoPath.startsWith('videos/') ? videoPath : `videos/${videoPath}`
+        localVideoPath = await downloadVideoFromR2(r2Key, videoId)
+        downloadedVideo = true
+      }
 
-    console.log('[BATCH UPDATE] 使用 ffprobe 获取时长:', localVideoPath)
+      console.log('[BATCH UPDATE] 使用 ffprobe 获取时长:', localVideoPath)
 
-    const command = `"C:\\ffmpeg\\bin\\ffprobe.exe" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${localVideoPath}"`
-    const { stdout } = await execAsync(command, { timeout: 120000 })
+      const command = `"C:\\ffmpeg\\bin\\ffprobe.exe" -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${localVideoPath}"`
+      const { stdout } = await execAsync(command, { timeout: 120000 })
 
-    const duration = parseFloat(stdout.trim())
-    if (isNaN(duration)) {
-      return null
-    }
+      const duration = parseFloat(stdout.trim())
+      if (isNaN(duration)) {
+        console.error('[BATCH UPDATE] ffprobe 返回无效时长:', stdout)
+        lastError = new Error(`ffprobe 返回无效时长: ${stdout}`)
+        // 继续重试
+        continue
+      }
 
-    return Math.round(duration)
-  } catch (error) {
-    console.error('[BATCH UPDATE] 获取视频时长失败:', error)
-    return null
-  } finally {
-    // 清理下载的临时视频文件
-    if (downloadedVideo && localVideoPath && existsSync(localVideoPath)) {
-      try {
-        await unlink(localVideoPath)
-        console.log('[BATCH UPDATE] 临时视频文件已删除')
-      } catch (e) {
-        console.warn('[BATCH UPDATE] 删除临时视频文件失败:', e)
+      console.log(`[BATCH UPDATE] 成功获取时长: ${Math.round(duration)}秒`)
+      return Math.round(duration)
+    } catch (error: any) {
+      lastError = error
+      console.error(`[BATCH UPDATE] 获取视频时长失败 (尝试 ${attempt + 1}/${retries + 1}):`, error?.message || error)
+
+      // 清理可能残留的临时文件
+      if (downloadedVideo && localVideoPath && existsSync(localVideoPath)) {
+        try {
+          await unlink(localVideoPath)
+          console.log('[BATCH UPDATE] 清理临时视频文件')
+        } catch (e) {
+          // 忽略清理错误
+        }
+      }
+
+      localVideoPath = null
+      downloadedVideo = false
+
+      // 如果不是最后一次尝试，等待一下再重试
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    } finally {
+      // 清理下载的临时视频文件
+      if (downloadedVideo && localVideoPath && existsSync(localVideoPath)) {
+        try {
+          await unlink(localVideoPath)
+          console.log('[BATCH UPDATE] 临时视频文件已删除')
+        } catch (e) {
+          console.warn('[BATCH UPDATE] 删除临时视频文件失败:', e)
+        }
       }
     }
   }
+
+  // 所有尝试都失败了
+  console.error('[BATCH UPDATE] 所有重试都失败，最后错误:', lastError?.message)
+  return null
 }
 
 export async function POST(request: NextRequest) {

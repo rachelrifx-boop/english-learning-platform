@@ -54,6 +54,7 @@ export default function AdminPage() {
   const [batchUpdateStatus, setBatchUpdateStatus] = useState('')
   const [draggedItem, setDraggedItem] = useState<string | null>(null)
   const [isReordering, setIsReordering] = useState(false)
+  const [updatingDuration, setUpdatingDuration] = useState(false)
 
   // 上传表单状态
   const [formData, setFormData] = useState({
@@ -467,6 +468,46 @@ export default function AdminPage() {
       alert('分析难度失败：' + (error.message || '请稍后重试'))
     } finally {
       setAnalyzingDifficulty(false)
+    }
+  }
+
+  // 更新单个视频时长
+  const handleUpdateDuration = async () => {
+    if (!editingVideo) return
+
+    if (!confirm('确定要更新这个视频的时长吗？\n\n系统会从 R2 下载视频并使用 ffprobe 获取实际时长，可能需要几十秒到几分钟，取决于视频大小。')) {
+      return
+    }
+
+    setUpdatingDuration(true)
+
+    try {
+      const response = await fetch('/api/admin/update-duration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: editingVideo.id })
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        alert(data.error || '更新时长失败')
+        return
+      }
+
+      const { oldDuration, newDuration, formatted } = data.data
+
+      alert(`时长更新成功！\n\n原时长: ${oldDuration}秒\n新时长: ${newDuration}秒 (${formatted})`)
+
+      // 更新编辑中的视频时长
+      setEditingVideo(prev => prev ? { ...prev, duration: newDuration } : null)
+
+      fetchVideos()
+    } catch (error: any) {
+      console.error('更新时长失败:', error)
+      alert('更新时长失败：' + (error.message || '请稍后重试'))
+    } finally {
+      setUpdatingDuration(false)
     }
   }
 
@@ -1217,10 +1258,21 @@ export default function AdminPage() {
 
               <div className="bg-surface rounded-lg p-4 space-y-3">
                 <div className="text-sm space-y-2">
-                  <p className="text-gray-400">
-                    <span className="font-medium text-white">视频时长：</span>
-                    {formatDuration(editingVideo.duration)}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-gray-400">
+                      <span className="font-medium text-white">视频时长：</span>
+                      {formatDuration(editingVideo.duration)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleUpdateDuration}
+                      disabled={updatingDuration}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Clock size={14} />
+                      {updatingDuration ? '更新中...' : '更新时长'}
+                    </button>
+                  </div>
                   <p className="text-gray-400">
                     <span className="font-medium text-white">创建时间：</span>
                     {new Date(editingVideo.createdAt).toLocaleString()}
