@@ -43,9 +43,9 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
       accessKeyId: r2AccessKeyId,
       secretAccessKey: r2SecretAccessKey,
     },
-    // 添加请求超时设置
+    // 增加请求超时设置
     requestHandler: {
-      requestTimeout: 300000, // 5分钟超时
+      requestTimeout: 900000, // 15分钟超时
       httpsAgent: undefined as any,
     },
   })
@@ -62,9 +62,9 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
   console.log('[R2] 开始下载视频:', key)
   const startTime = Date.now()
 
-  // 添加超时 Promise
+  // 增加超时时间到 15 分钟
   const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('下载超时（3分钟）')), 180000)
+    setTimeout(() => reject(new Error('下载超时（15分钟）')), 900000)
   })
 
   try {
@@ -209,7 +209,9 @@ async function processInBackground(videoId: string, videoPath: string, modelSize
       console.log('[后台] 本地无视频，开始从 R2 下载...')
       await updateStatus(videoId, 'downloading', 15, '从云端下载视频...')
 
-      localVideoPath = await downloadVideoFromR2(videoPath, videoId)
+      // 如果 videoPath 不以 videos/ 开头，添加前缀（因为 R2 中的 key 包含 videos/ 前缀）
+      const r2Key = videoPath.startsWith('videos/') ? videoPath : `videos/${videoPath}`
+      localVideoPath = await downloadVideoFromR2(r2Key, videoId)
       downloadedVideo = true
     }
 
@@ -282,6 +284,30 @@ async function processInBackground(videoId: string, videoPath: string, modelSize
         filePath: `/uploads/subtitles/${zhFilename}`
       }
     })
+
+    // 自动分析并更新视频难度
+    await updateStatus(videoId, 'analyzing', 95, '分析视频难度...')
+    try {
+      const { analyzeDifficulty } = await import('@/lib/difficulty-analyzer')
+
+      // 获取视频时长
+      const video = await prisma.video.findUnique({ where: { id: videoId } })
+      if (video) {
+        const difficultyResult = analyzeDifficulty(englishSegments, video.duration)
+
+        console.log('[后台] 难度分析结果:', difficultyResult.level, '置信度:', difficultyResult.confidence)
+
+        // 更新视频难度
+        await prisma.video.update({
+          where: { id: videoId },
+          data: { difficulty: difficultyResult.level }
+        })
+
+        console.log('[后台] 视频难度已更新为:', difficultyResult.level)
+      }
+    } catch (error) {
+      console.warn('[后台] 难度分析失败，继续使用默认难度:', error)
+    }
 
     // 清理临时文件
     await cleanupAudio(audioPath)
