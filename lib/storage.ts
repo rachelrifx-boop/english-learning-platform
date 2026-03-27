@@ -163,9 +163,13 @@ async function uploadToPresignedUrl(
         // 需要提取 bucket 之后的部分
         const urlObj = new URL(presignedUrl)
         const pathParts = urlObj.pathname.split('/')
-        // 跳过 bucket name，保留 folder/file
-        // 例如: /english-learning-videos/videos/xxx.mp4 -> videos/xxx.mp4
-        const key = pathParts.slice(2).join('/')
+        // 跳过开头的空字符串，保留 folder/file
+        // 例如: /english-learning-videos/videos/xxx.mp4 -> english-learning-videos/videos/xxx.mp4
+        // 但实际上 R2 的路径是 /bucket-name/videos/xxx.mp4
+        // 我们需要跳过 bucket name，保留 videos/xxx.mp4
+        // 实际预签名 URL 格式: https://bucket.accountId.r2.cloudflarestorage.com/key
+        // 所以 pathname 直接是 /videos/xxx.mp4
+        const key = pathParts.slice(1).join('/')
         console.log('[Storage] 提取的 key:', key)
         resolve({ url: key, key })
       } else {
