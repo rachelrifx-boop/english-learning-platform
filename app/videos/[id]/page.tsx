@@ -1230,7 +1230,7 @@ export default function VideoPage() {
             />
 
             {/* 当前播放字幕显示 */}
-            <div className="bg-surface-light rounded-xl p-4 sm:p-5">
+            <div className="bg-surface-light rounded-xl p-6 sm:p-8">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">当前字幕</h3>
                 <div className="flex items-center gap-2">
