@@ -316,7 +316,7 @@ export default function HomePage() {
         </header>
 
         {/* 主内容 */}
-        <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8 overflow-y-auto">
+        <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8">
           {/* 搜索框 */}
           {showSearch && (
             <div className="mb-4 animate-fade-in">
