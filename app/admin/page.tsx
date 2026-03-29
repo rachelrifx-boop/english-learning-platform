@@ -183,9 +183,9 @@ export default function AdminPage() {
       }
 
       setUploadProgress(75)
-      setUploadStatus('正在获取视频时长并创建记录...')
+      setUploadStatus('正在创建视频记录...')
 
-      // 4. 创建视频记录（不传 duration，让后端自动获取）
+      // 4. 创建视频记录（上传时已经获取了时长，直接使用）
       const response = await fetch('/api/admin/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,7 +197,7 @@ export default function AdminPage() {
           coverUrl: coverUrl,
           englishSubtitleUrl: englishSubtitleUrl,
           chineseSubtitleUrl: chineseSubtitleUrl,
-          // 不传递 duration，让后端自动获取视频实际时长
+          duration: videoResult.duration, // 使用上传时获取的时长
           difficulty: 'B1' // 默认难度，有字幕会自动分析
         })
       })

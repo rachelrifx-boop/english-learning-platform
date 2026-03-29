@@ -6,6 +6,7 @@ export interface UploadResult {
   key?: string
   path?: string
   error?: string
+  duration?: number
 }
 
 /**
@@ -55,12 +56,13 @@ export async function uploadFile(
               if (response.data.useDirectUpload && response.data.presignedUrl) {
                 console.log('[Storage] 需要客户端直接上传到预签名 URL')
                 // 使用预签名 URL 客户端直接上传
-                resolve({ usePresignedUrl: true, presignedUrl: response.data.presignedUrl, key: response.data.key, url: response.data.url })
+                resolve({ usePresignedUrl: true, presignedUrl: response.data.presignedUrl, key: response.data.key, url: response.data.url, duration: response.data.duration })
               } else {
                 console.log('[Storage] 服务器端上传成功')
                 resolve({
                   url: response.data.url || response.data.path,
-                  key: response.data.path || response.data.url
+                  key: response.data.path || response.data.url,
+                  duration: response.data.duration
                 })
               }
             } else {
@@ -93,7 +95,8 @@ export async function uploadFile(
 
     return {
       url: result.url,
-      key: result.key
+      key: result.key,
+      duration: result.duration
     }
   } catch (serverUploadError) {
     console.warn('[Storage] 服务器端上传失败，尝试 R2 直接上传:', serverUploadError)
