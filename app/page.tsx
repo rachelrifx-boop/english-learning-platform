@@ -234,7 +234,7 @@ export default function HomePage() {
   return (
     <div className="flex h-screen overflow-hidden bg-primary">
       {/* 左侧导航 - 桌面端显示，移动端隐藏 */}
-      <div className="hidden md:block h-full overflow-y-auto">
+      <div className="hidden md:block h-full overflow-y-hidden">
         <LeftSidebar
           onDifficultyChange={setSelectedDifficulty}
           onDurationChange={setSelectedDuration}
@@ -316,7 +316,7 @@ export default function HomePage() {
         </header>
 
         {/* 主内容 */}
-        <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8">
+        <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8 overflow-y-auto custom-scrollbar">
           {/* 搜索框 */}
           {showSearch && (
             <div className="mb-4 animate-fade-in">
