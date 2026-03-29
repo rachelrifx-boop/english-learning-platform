@@ -139,10 +139,11 @@ export async function POST(request: NextRequest) {
     // -vframes 1: 只截取1帧
     // -q:v 2: 高质量JPEG
     // -threads 1: 单线程处理（避免占用过多资源）
-    // -timeout_indicator: 设置超时
-    // -user_agent: 设置用户代理（有些服务器需要）
     // 注意：-ss 参数放在 -i 之前可以快速定位，不解码前面的内容
-    const ffmpegCmd = `"C:\\ffmpeg\\bin\\ffmpeg.exe" -y -user_agent "Mozilla/5.0" -timeout 5000000 -threads 1 -ss 10 -i "${videoHttpUrl}" -vframes 1 -q:v 2 "${tempCoverPath}"`
+    // 修复：路径中的反斜杠需要转义，或者使用正斜杠（ffmpeg 也支持）
+    const inputPath = videoHttpUrl.replace(/\\/g, '/')
+    const outputPath = tempCoverPath.replace(/\\/g, '/')
+    const ffmpegCmd = `"C:/ffmpeg/bin/ffmpeg.exe" -y -ss 10 -i "${inputPath}" -vframes 1 -q:v 2 "${outputPath}"`
 
     console.log('[EXTRACT COVER] 执行 ffmpeg 命令（流式截取）...')
     const startTime = Date.now()
