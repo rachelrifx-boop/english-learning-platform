@@ -513,9 +513,9 @@ export default function AdminPage() {
     }
   }
 
-  // 为视频生成封面
+  // 为视频生成封面（从第10秒截取，避免黑屏）
   const handleGenerateCover = async (video: Video) => {
-    if (!confirm(`确定要为视频 "${video.title}" 生成封面吗？\n\n系统会从 R2 下载视频并截取首帧作为封面。`)) {
+    if (!confirm(`确定要为视频 "${video.title}" 重新生成封面吗？\n\n系统会从视频第10秒截取帧作为封面（避免黑屏/淡入问题）。`)) {
       return
     }
 
@@ -1020,16 +1020,14 @@ export default function AdminPage() {
                       编辑
                     </button>
                   )}
-                  {!video.coverPath && (
-                    <button
-                      onClick={() => handleGenerateCover(video)}
-                      disabled={generatingCover && generatingCoverVideoId === video.id}
-                      className="px-3 py-2 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="生成封面"
-                    >
-                      <ImagePlus size={16} className={generatingCover && generatingCoverVideoId === video.id ? 'animate-pulse' : ''} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleGenerateCover(video)}
+                    disabled={generatingCover && generatingCoverVideoId === video.id}
+                    className="px-3 py-2 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="重新生成封面"
+                  >
+                    <ImagePlus size={16} className={generatingCover && generatingCoverVideoId === video.id ? 'animate-pulse' : ''} />
+                  </button>
                   <button
                     onClick={() => handleDeleteVideo(video.id)}
                     className="px-3 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
