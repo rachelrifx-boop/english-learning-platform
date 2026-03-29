@@ -4,8 +4,8 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { randomBytes } from 'crypto'
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
-import { Readable } from 'stream'
-import { writeFile, unlink } from 'fs/promises'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { unlink } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 
@@ -16,6 +16,7 @@ const r2AccountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
 const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
 const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
 const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'english-learning-videos'
+const r2PublicUrl = process.env.CLOUDFLARE_R2_PUBLIC_URL // R2 公共访问 URL（如果配置了）
 
 // 创建 R2 客户端
 let r2Client: S3Client | null = null
@@ -30,8 +31,14 @@ if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
   })
 }
 
-// 从 R2 下载视频
-async function downloadVideoFromR2(key: string): Promise<Buffer> {
+// 生成 R2 对象的访问 URL（优先使用公共 URL，否则使用签名 URL）
+async function getR2ObjectUrl(key: string): Promise<string> {
+  // 如果配置了公共访问 URL，直接返回公共 URL
+  if (r2PublicUrl) {
+    return `${r2PublicUrl}/${key}`
+  }
+
+  // 否则生成临时签名 URL（有效期 5 分钟）
   if (!r2Client) {
     throw new Error('R2 未配置')
   }
@@ -41,30 +48,8 @@ async function downloadVideoFromR2(key: string): Promise<Buffer> {
     Key: key,
   })
 
-  console.log('[EXTRACT COVER] 开始下载视频:', key)
-  const startTime = Date.now()
-
-  const response = await r2Client.send(command)
-  const body = response.Body
-
-  if (!body) {
-    throw new Error('无法读取 R2 响应')
-  }
-
-  const chunks: Buffer[] = []
-  if (body instanceof Readable) {
-    for await (const chunk of body) {
-      chunks.push(chunk)
-    }
-  } else {
-    throw new Error('无法读取 R2 响应流')
-  }
-
-  const buffer = Buffer.concat(chunks)
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-  console.log(`[EXTRACT COVER] 视频下载完成 (耗时 ${elapsed}秒, 大小 ${(buffer.length / 1024 / 1024).toFixed(2)}MB)`)
-
-  return buffer
+  const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 300 })
+  return signedUrl
 }
 
 // 上传封面到 R2
@@ -92,9 +77,8 @@ async function uploadCoverToR2(buffer: Buffer, fileName: string): Promise<{ url:
   }
 }
 
-// 从视频截取首帧作为封面
+// 从视频截取首帧作为封面（优化版：直接从 HTTP URL 截取，不下载整个视频）
 export async function POST(request: NextRequest) {
-  let tempVideoPath: string | null = null
   let tempCoverPath: string | null = null
 
   try {
@@ -126,29 +110,29 @@ export async function POST(request: NextRequest) {
       r2Key = `videos/${videoUrl}`
     }
 
-    // 生成临时文件路径
+    // 生成 R2 对象的访问 URL
+    const videoHttpUrl = await getR2ObjectUrl(r2Key)
+    console.log('[EXTRACT COVER] 视频 URL:', videoHttpUrl.substring(0, 100) + '...')
+
+    // 生成临时封面文件路径
     const tempId = randomBytes(8).toString('hex')
     const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp')
-    tempVideoPath = path.join(tempDir, `video-${tempId}.mp4`)
     tempCoverPath = path.join(tempDir, `cover-${tempId}.jpg`)
 
-    // 从 R2 下载视频
-    const videoBuffer = await downloadVideoFromR2(r2Key)
-
-    // 保存到临时文件
-    await writeFile(tempVideoPath, videoBuffer)
-    console.log('[EXTRACT COVER] 视频已保存到临时文件:', tempVideoPath)
-
-    // 使用 ffmpeg 截取视频首帧
+    // 使用 ffmpeg 直接从 HTTP URL 截取视频首帧
     // -ss 0: 从第0秒开始
     // -vframes 1: 只截取1帧
     // -q:v 2: 高质量JPEG
-    const ffmpegCmd = `"C:\\ffmpeg\\bin\\ffmpeg.exe" -y -ss 0 -i "${tempVideoPath}" -vframes 1 -q:v 2 "${tempCoverPath}"`
+    // -threads 1: 单线程处理（避免占用过多资源）
+    // -timeout_indicator: 设置超时
+    // -user_agent: 设置用户代理（有些服务器需要）
+    const ffmpegCmd = `"C:\\ffmpeg\\bin\\ffmpeg.exe" -y -user_agent "Mozilla/5.0" -timeout 5000000 -threads 1 -ss 0 -i "${videoHttpUrl}" -vframes 1 -q:v 2 "${tempCoverPath}"`
 
-    console.log('[EXTRACT COVER] 执行 ffmpeg 命令...')
+    console.log('[EXTRACT COVER] 执行 ffmpeg 命令（流式截取）...')
+    const startTime = Date.now()
 
     try {
-      await execAsync(ffmpegCmd, { timeout: 60000 })
+      await execAsync(ffmpegCmd, { timeout: 120000 }) // 2分钟超时
     } catch (error: any) {
       console.error('[EXTRACT COVER] FFmpeg 执行失败:', error)
       return NextResponse.json(
@@ -156,6 +140,9 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.log(`[EXTRACT COVER] ffmpeg 执行完成 (耗时 ${elapsed}秒)`)
 
     // 检查封面文件是否生成成功
     if (!existsSync(tempCoverPath)) {
@@ -171,6 +158,8 @@ export async function POST(request: NextRequest) {
     const fs = require('fs')
     const coverBuffer = fs.readFileSync(tempCoverPath!)
     const coverFileName = `cover-${Date.now()}-${tempId}.jpg`
+
+    console.log(`[EXTRACT COVER] 封面大小: ${(coverBuffer.length / 1024).toFixed(2)}KB`)
 
     // 上传到 R2
     console.log('[EXTRACT COVER] 开始上传封面到 R2...')
@@ -196,16 +185,8 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   } finally {
-    // 清理临时文件
+    // 清理临时封面文件
     const fs = require('fs')
-    if (tempVideoPath && fs.existsSync(tempVideoPath)) {
-      try {
-        await unlink(tempVideoPath)
-        console.log('[EXTRACT COVER] 临时视频文件已删除')
-      } catch (e) {
-        console.warn('[EXTRACT COVER] 删除临时视频文件失败:', e)
-      }
-    }
     if (tempCoverPath && fs.existsSync(tempCoverPath)) {
       try {
         await unlink(tempCoverPath)
