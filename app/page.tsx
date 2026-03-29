@@ -232,9 +232,9 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-primary">
+    <div className="flex h-screen overflow-hidden bg-primary">
       {/* 左侧导航 - 桌面端显示，移动端隐藏 */}
-      <div className="hidden md:block">
+      <div className="hidden md:block h-full overflow-y-auto">
         <LeftSidebar
           onDifficultyChange={setSelectedDifficulty}
           onDurationChange={setSelectedDuration}
@@ -251,9 +251,9 @@ export default function HomePage() {
       </div>
 
       {/* 主内容区 */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* 顶部导航 */}
-        <header className="bg-surface-light border-b border-gray-800 sticky top-0 z-40">
+        <header className="bg-surface-light border-b border-gray-800 flex-shrink-0">
           <div className="px-4 sm:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="min-w-0 flex-1">
@@ -316,7 +316,7 @@ export default function HomePage() {
         </header>
 
         {/* 主内容 */}
-        <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8">
+        <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8 overflow-y-auto">
           {/* 搜索框 */}
           {showSearch && (
             <div className="mb-4 animate-fade-in">
