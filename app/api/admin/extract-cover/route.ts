@@ -102,17 +102,32 @@ export async function POST(request: NextRequest) {
 
     console.log('[EXTRACT COVER] 开始截取视频第10秒帧作为封面:', videoUrl)
 
-    // 处理 videoUrl，获取 R2 key
-    let r2Key = videoUrl
-    if (videoUrl.startsWith('covers/') || videoUrl.startsWith('videos/')) {
-      r2Key = videoUrl
+    // 处理 videoUrl，获取视频的访问地址
+    // 本地文件：uploads/videos/xxx.mp4 -> 通过本地 URL 访问
+    // R2 文件：videos/xxx.mp4 -> 通过 R2 URL 访问
+    let videoHttpUrl: string
+    if (videoUrl.startsWith('uploads/')) {
+      // 本地文件，使用服务器本地路径
+      const localPath = path.join(process.cwd(), 'public', videoUrl)
+      if (existsSync(localPath)) {
+        videoHttpUrl = localPath
+        console.log('[EXTRACT COVER] 使用本地视频文件:', localPath)
+      } else {
+        // 如果本地不存在，尝试通过代理访问
+        videoHttpUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/${videoUrl}`
+        console.log('[EXTRACT COVER] 使用本地代理 URL:', videoHttpUrl)
+      }
     } else {
-      r2Key = `videos/${videoUrl}`
+      // R2 文件，生成 R2 访问 URL
+      let r2Key = videoUrl
+      if (videoUrl.startsWith('covers/') || videoUrl.startsWith('videos/')) {
+        r2Key = videoUrl
+      } else {
+        r2Key = `videos/${videoUrl}`
+      }
+      videoHttpUrl = await getR2ObjectUrl(r2Key)
+      console.log('[EXTRACT COVER] 使用 R2 视频 URL')
     }
-
-    // 生成 R2 对象的访问 URL
-    const videoHttpUrl = await getR2ObjectUrl(r2Key)
-    console.log('[EXTRACT COVER] 视频 URL:', videoHttpUrl.substring(0, 100) + '...')
 
     // 生成临时封面文件路径
     const tempId = randomBytes(8).toString('hex')
