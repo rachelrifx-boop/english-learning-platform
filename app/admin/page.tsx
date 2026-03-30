@@ -293,7 +293,16 @@ export default function AdminPage() {
 
   // 轮询字幕生成状态
   const pollSubtitleStatus = async (videoId: string) => {
+    let isPolling = true
+    let notStartedCount = 0 // 连续 not_started 计数
+    const MAX_NOT_STARTED = 5 // 最多 5 次后停止
+
     const pollInterval = setInterval(async () => {
+      if (!isPolling) {
+        clearInterval(pollInterval)
+        return
+      }
+
       try {
         const response = await fetch(`/api/admin/subtitles/status?videoId=${videoId}`)
         const data = await response.json()
@@ -305,6 +314,7 @@ export default function AdminPage() {
           setUploadStatus(message)
 
           if (status === 'completed') {
+            isPolling = false
             clearInterval(pollInterval)
             setGeneratingSubtitle(false)
             setUploadProgress(0)
@@ -312,11 +322,41 @@ export default function AdminPage() {
             alert('字幕生成成功！')
             fetchVideos()
           } else if (status === 'error') {
+            isPolling = false
             clearInterval(pollInterval)
             setGeneratingSubtitle(false)
             setUploadProgress(0)
             setUploadStatus('')
             alert('字幕生成失败：' + message)
+          } else if (status === 'not_started') {
+            notStartedCount++
+            // 状态文件不存在，重新获取视频列表检查
+            const videosResponse = await fetch('/api/admin/videos')
+            const videosData = await videosResponse.json()
+            if (videosData.success) {
+              const video = videosData.data.videos.find((v: Video) => v.id === videoId)
+              if (video && video.subtitles.length > 0) {
+                // 字幕已生成
+                isPolling = false
+                clearInterval(pollInterval)
+                setGeneratingSubtitle(false)
+                setUploadProgress(0)
+                setUploadStatus('')
+                alert('字幕生成成功！')
+                fetchVideos()
+              } else if (notStartedCount >= MAX_NOT_STARTED) {
+                // 连续多次 not_started 且字幕未生成，停止轮询
+                isPolling = false
+                clearInterval(pollInterval)
+                setGeneratingSubtitle(false)
+                setUploadProgress(0)
+                setUploadStatus('')
+                alert('字幕生成失败：任务未启动或已失败')
+              }
+            }
+          } else {
+            // 有进度，重置计数
+            notStartedCount = 0
           }
         }
       } catch (error) {
@@ -326,8 +366,9 @@ export default function AdminPage() {
 
     // 30 分钟后自动停止轮询
     setTimeout(() => {
-      clearInterval(pollInterval)
-      if (generatingSubtitle) {
+      if (isPolling) {
+        isPolling = false
+        clearInterval(pollInterval)
         setGeneratingSubtitle(false)
         setUploadProgress(0)
         setUploadStatus('')

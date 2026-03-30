@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import { existsSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { readFile, unlink } from 'fs/promises'
 import path from 'path'
 
 // 获取字幕生成状态
@@ -43,6 +43,37 @@ export async function GET(request: NextRequest) {
 
     const content = await readFile(statusFile, 'utf-8')
     const statusData = JSON.parse(content)
+
+    // 检查状态文件是否过期（2小时）
+    const now = Date.now()
+    const fileAge = now - (statusData.timestamp || 0)
+    const STALE_THRESHOLD = 2 * 60 * 60 * 1000 // 2小时
+
+    // 如果状态文件已过期或状态是 completed/error，删除它并返回未开始
+    if (fileAge > STALE_THRESHOLD || statusData.status === 'completed') {
+      try {
+        await unlink(statusFile)
+      } catch (e) {
+        // ignore
+      }
+      return NextResponse.json({
+        success: true,
+        data: {
+          status: statusData.status === 'completed' ? 'completed' : 'not_started',
+          progress: 0,
+          message: statusData.status === 'completed' ? '字幕已生成' : '未开始'
+        }
+      })
+    }
+
+    // 错误状态也返回后删除文件
+    if (statusData.status === 'error') {
+      try {
+        await unlink(statusFile)
+      } catch (e) {
+        // ignore
+      }
+    }
 
     return NextResponse.json({
       success: true,

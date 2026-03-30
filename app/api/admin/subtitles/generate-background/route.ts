@@ -36,6 +36,10 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
     throw new Error('R2 配置不完整')
   }
 
+  // 使用 AbortController 设置超时
+  const abortController = new AbortController()
+  const timeoutId = setTimeout(() => abortController.abort(), 30 * 60 * 1000) // 30分钟超时
+
   const r2Client = new S3Client({
     region: 'auto',
     endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
@@ -43,11 +47,7 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
       accessKeyId: r2AccessKeyId,
       secretAccessKey: r2SecretAccessKey,
     },
-    // 增加请求超时设置
-    requestHandler: {
-      requestTimeout: 900000, // 15分钟超时
-      httpsAgent: undefined as any,
-    },
+    maxAttempts: 3, // 最多重试3次
   })
 
   const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp')
@@ -62,48 +62,40 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
   console.log('[R2] 开始下载视频:', key)
   const startTime = Date.now()
 
-  // 增加超时时间到 15 分钟
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('下载超时（15分钟）')), 900000)
-  })
-
   try {
-    const downloadPromise = (async () => {
-      const response = await r2Client.send(command)
-      const body = response.Body
+    const response = await r2Client.send(command)
+    clearTimeout(timeoutId)
+    const body = response.Body
 
-      if (body instanceof Readable) {
-        const chunks: Buffer[] = []
-        let downloadedBytes = 0
-        let lastProgressUpdate = 0
+    if (body instanceof Readable) {
+      const chunks: Buffer[] = []
+      let downloadedBytes = 0
+      let lastProgressUpdate = 0
 
-        for await (const chunk of body) {
-          chunks.push(chunk)
-          downloadedBytes += chunk.length
+      for await (const chunk of body) {
+        chunks.push(chunk)
+        downloadedBytes += chunk.length
 
-          // 每下载 5MB 或每5秒更新一次进度
-          const now = Date.now()
-          if (downloadedBytes % (5 * 1024 * 1024) < chunk.length || now - lastProgressUpdate > 5000) {
-            const progress = Math.min(18, 15 + (downloadedBytes / (100 * 1024 * 1024)) * 3)
-            await updateStatus(videoId, 'downloading', Math.round(progress), `下载中...${(downloadedBytes / (1024 * 1024)).toFixed(0)}MB`)
-            lastProgressUpdate = now
-            console.log(`[R2] 下载进度: ${(downloadedBytes / (1024 * 1024)).toFixed(1)}MB`)
-          }
+        // 每下载 5MB 或每5秒更新一次进度
+        const now = Date.now()
+        if (downloadedBytes % (5 * 1024 * 1024) < chunk.length || now - lastProgressUpdate > 5000) {
+          const progress = Math.min(18, 15 + (downloadedBytes / (100 * 1024 * 1024)) * 3)
+          await updateStatus(videoId, 'downloading', Math.round(progress), `下载中...${(downloadedBytes / (1024 * 1024)).toFixed(0)}MB`)
+          lastProgressUpdate = now
+          console.log(`[R2] 下载进度: ${(downloadedBytes / (1024 * 1024)).toFixed(1)}MB`)
         }
-        const buffer = Buffer.concat(chunks)
-        await writeFile(videoPath, buffer)
-      } else {
-        throw new Error('无法读取 R2 响应流')
       }
+      const buffer = Buffer.concat(chunks)
+      await writeFile(videoPath, buffer)
+    } else {
+      throw new Error('无法读取 R2 响应流')
+    }
 
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-      console.log(`[R2] 视频下载完成: ${videoPath} (耗时 ${elapsed}秒)`)
-      return videoPath
-    })()
-
-    await Promise.race([downloadPromise, timeoutPromise])
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.log(`[R2] 视频下载完成: ${videoPath} (耗时 ${elapsed}秒)`)
     return videoPath
   } catch (error: any) {
+    clearTimeout(timeoutId)
     // 清理部分下载的文件
     if (existsSync(videoPath)) {
       try {
@@ -111,6 +103,9 @@ async function downloadVideoFromR2(key: string, videoId: string): Promise<string
       } catch (e) {
         // ignore
       }
+    }
+    if (error.name === 'AbortError') {
+      throw new Error('下载超时（30分钟）')
     }
     throw error
   }
@@ -312,7 +307,22 @@ async function processInBackground(videoId: string, videoPath: string, modelSize
     // 清理临时文件
     await cleanupAudio(audioPath)
 
-    await updateStatus(videoId, 'completed', 100, '字幕生成完成！')
+    // 更新状态为完成（让前端能捕获到完成状态）
+    await updateStatus(videoId, 'completed', 100, '字幕生成成功')
+
+    // 等待一秒，确保前端轮询能获取到完成状态
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // 删除状态文件
+    const statusFile = path.join(STATUS_DIR, `subtitle-status-${videoId}.json`)
+    if (existsSync(statusFile)) {
+      try {
+        await unlink(statusFile)
+        console.log('[后台] 状态文件已删除')
+      } catch (e) {
+        console.warn('[后台] 删除状态文件失败:', e)
+      }
+    }
 
     console.log('[后台] 字幕生成完成:', videoId)
 
@@ -328,6 +338,7 @@ async function processInBackground(videoId: string, videoPath: string, modelSize
       }
     }
 
+    // 更新错误状态（保留状态文件以便前端获取错误信息，但设置过期时间）
     await updateStatus(videoId, 'error', 0, error.message)
   }
 }
