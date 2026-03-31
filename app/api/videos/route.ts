@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const difficulty = searchParams.get('difficulty')
     const category = searchParams.get('category')
     const duration = searchParams.get('duration')
+    const search = searchParams.get('search')
 
     const where: any = {}
     if (difficulty) {
@@ -15,6 +16,14 @@ export async function GET(request: NextRequest) {
     }
     if (category) {
       where.category = category
+    }
+
+    // 搜索功能 - 根据标题或描述搜索
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
     }
 
     // 处理时长筛选（duration字段单位是秒）

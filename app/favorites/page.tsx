@@ -17,24 +17,17 @@ export default function FavoritesPage() {
   const fetchFavorites = async () => {
     setLoading(true)
     try {
-      // 从localStorage读取收藏的ID列表
-      const savedFavorites = localStorage.getItem('favorites')
-      if (savedFavorites) {
-        const ids = JSON.parse(savedFavorites)
-        setFavoriteIds(new Set(ids))
-
-        // 获取所有视频，然后过滤出收藏的
-        const response = await fetch('/api/videos')
-        const data = await response.json()
-        if (data.success && data.data.videos) {
-          const favoriteVideos = data.data.videos.filter((v: any) =>
-            new Set(ids).has(v.id)
-          )
-          setFavorites(favoriteVideos)
-        }
+      // 直接从数据库获取用户的收藏视频
+      const response = await fetch('/api/user/favorites')
+      const data = await response.json()
+      if (data.success && data.data.videos) {
+        setFavorites(data.data.videos)
+      } else {
+        setFavorites([])
       }
     } catch (error) {
       console.error('获取收藏视频失败:', error)
+      setFavorites([])
     } finally {
       setLoading(false)
     }

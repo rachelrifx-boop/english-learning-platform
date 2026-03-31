@@ -19,6 +19,8 @@ interface LeftSidebarProps {
   onDifficultyChange?: (difficulty: string | null) => void
   onDurationChange?: (duration: string | null) => void
   onCategoryChange?: (category: string | null) => void
+  onShowFavorites?: () => void
+  onShowCompleted?: () => void
   totalCourses?: number
   favoriteCount?: number
   completedCourses?: number
@@ -57,6 +59,8 @@ export function LeftSidebar({
   onDifficultyChange,
   onDurationChange,
   onCategoryChange,
+  onShowFavorites,
+  onShowCompleted,
   totalCourses = 0,
   favoriteCount = 0,
   completedCourses = 0,
@@ -228,9 +232,9 @@ export function LeftSidebar({
   }
 
   return (
-    <div className="w-64 bg-surface-light border-r border-gray-800 min-h-screen p-4 flex flex-col gap-6">
+    <div className="w-64 h-screen bg-surface-light border-r border-gray-800 p-4 flex flex-col gap-4 overflow-y-auto sidebar-scrollbar">
       {/* Logo */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <Video className="text-accent" size={24} />
         <h1 className="text-lg font-bold text-white">Onsay Lab</h1>
       </div>
@@ -238,17 +242,23 @@ export function LeftSidebar({
       {/* 学习统计 */}
       <div className="bg-surface rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-400">总课程</span>
+          <span className="text-sm text-gray-400">总课程（更新中）</span>
           <span className="text-lg font-bold text-accent">{totalCourses}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-400">收藏课程</span>
+        <button
+          onClick={onShowFavorites}
+          className="flex items-center justify-between w-full group"
+        >
+          <span className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">收藏课程</span>
           <span className="text-lg font-bold text-accent-2">{favoriteCount}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-400">已完成课程</span>
+        </button>
+        <button
+          onClick={onShowCompleted}
+          className="flex items-center justify-between w-full group"
+        >
+          <span className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">已完成课程</span>
           <span className="text-lg font-bold text-accent">{completedCourses}</span>
-        </div>
+        </button>
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-400">学习时长</span>
           <span className="text-lg font-bold text-accent">{hoursLearned}h</span>
@@ -396,7 +406,7 @@ export function LeftSidebar({
       </div>
 
       {/* 底部导航 */}
-      <div className="mt-auto space-y-2">
+      <div className="space-y-2 flex-shrink-0">
         <Link
           href="/vocabulary"
           className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:text-white hover:bg-surface rounded-lg transition-colors"

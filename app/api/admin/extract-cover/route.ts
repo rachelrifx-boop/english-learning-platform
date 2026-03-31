@@ -77,7 +77,7 @@ async function uploadCoverToR2(buffer: Buffer, fileName: string): Promise<{ url:
   }
 }
 
-// 从视频截取第10秒的帧作为封面（优化版：直接从 HTTP URL 截取，避免黑屏/淡入问题）
+// 从视频截取帧作为封面（第46期使用第15秒，其他使用第10秒）
 export async function POST(request: NextRequest) {
   let tempCoverPath: string | null = null
 
@@ -94,13 +94,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { videoUrl } = body
+    const { videoUrl, videoTitle } = body
 
     if (!videoUrl) {
       return NextResponse.json({ success: false, error: '请提供视频URL' }, { status: 400 })
     }
 
-    console.log('[EXTRACT COVER] 开始截取视频第10秒帧作为封面:', videoUrl)
+    // 判断是否是第46期视频，如果是则使用第15秒，否则使用第10秒
+    const timestamp = videoTitle && (videoTitle.includes('第46期') || videoTitle.includes('46期')) ? 15 : 10
+    console.log(`[EXTRACT COVER] 开始截取视频第${timestamp}秒帧作为封面:`, videoTitle || videoUrl)
 
     // 处理 videoUrl，获取视频的访问地址
     // 本地文件：uploads/videos/xxx.mp4 -> 通过本地 URL 访问
@@ -134,16 +136,14 @@ export async function POST(request: NextRequest) {
     const tempDir = path.join(process.cwd(), 'public', 'uploads', 'temp')
     tempCoverPath = path.join(tempDir, `cover-${tempId}.jpg`)
 
-    // 使用 ffmpeg 直接从 HTTP URL 截取视频第10秒的帧（避免黑屏/空白帧）
-    // -ss 10: 从第10秒开始（避免视频开头的黑屏/淡入效果）
+    // 使用 ffmpeg 直接从 HTTP URL 截取视频指定秒数的帧（避免黑屏/空白帧）
+    // -ss: 从指定秒数开始（第46期为15秒，其他为10秒，避免视频开头的黑屏/淡入效果）
     // -vframes 1: 只截取1帧
     // -q:v 2: 高质量JPEG
-    // -threads 1: 单线程处理（避免占用过多资源）
     // 注意：-ss 参数放在 -i 之前可以快速定位，不解码前面的内容
-    // 修复：路径中的反斜杠需要转义，或者使用正斜杠（ffmpeg 也支持）
     const inputPath = videoHttpUrl.replace(/\\/g, '/')
     const outputPath = tempCoverPath.replace(/\\/g, '/')
-    const ffmpegCmd = `"C:/ffmpeg/bin/ffmpeg.exe" -y -ss 10 -i "${inputPath}" -vframes 1 -q:v 2 "${outputPath}"`
+    const ffmpegCmd = `"C:/ffmpeg/bin/ffmpeg.exe" -y -ss ${timestamp} -i "${inputPath}" -vframes 1 -q:v 2 "${outputPath}"`
 
     console.log('[EXTRACT COVER] 执行 ffmpeg 命令（流式截取）...')
     const startTime = Date.now()

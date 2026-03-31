@@ -23,6 +23,10 @@ export default function HomePage() {
   const [hoursLearned, setHoursLearned] = useState('0.0')
   const [streakDays, setStreakDays] = useState(0)
 
+  // 视图状态：all（全部课程）, favorites（收藏课程）, completed（已完成课程）
+  const [currentView, setCurrentView] = useState<'all' | 'favorites' | 'completed'>('all')
+  const [viewTitle, setViewTitle] = useState('全部课程')
+
   // 筛选状态
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null)
   const [selectedDuration, setSelectedDuration] = useState<string | null>(null)
@@ -88,7 +92,7 @@ export default function HomePage() {
   useEffect(() => {
     fetchUser()
     fetchVideos()
-  }, [selectedDifficulty, selectedDuration, selectedCategory, searchQuery])
+  }, [selectedDifficulty, selectedDuration, selectedCategory, searchQuery, currentView])
 
   // 当用户信息获取成功后，再获取统计数据和打卡记录
   useEffect(() => {
@@ -113,21 +117,54 @@ export default function HomePage() {
   const fetchVideos = async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams()
-      if (selectedDifficulty) params.append('difficulty', selectedDifficulty)
-      if (selectedCategory) params.append('category', selectedCategory)
-      if (selectedDuration) params.append('duration', selectedDuration)
-      if (searchQuery) params.append('search', searchQuery)
+      let videos: any[] = []
 
-      const response = await fetch(`/api/videos?${params.toString()}`)
-      const data = await response.json()
+      if (currentView === 'favorites') {
+        // 获取收藏的视频
+        const response = await fetch('/api/user/favorites')
+        const data = await response.json()
+        if (data.success) {
+          videos = data.data.videos
+        }
+      } else if (currentView === 'completed') {
+        // 获取已完成的视频
+        const response = await fetch('/api/user/completed')
+        const data = await response.json()
+        if (data.success) {
+          videos = data.data.videos
+        }
+      } else {
+        // 获取所有视频 - 先获取所有视频，然后在前端筛选时长
+        const params = new URLSearchParams()
+        if (selectedDifficulty) params.append('difficulty', selectedDifficulty)
+        if (selectedCategory) params.append('category', selectedCategory)
+        // 不在后端筛选时长，在前端筛选以确保准确性
+        if (searchQuery) params.append('search', searchQuery)
 
-      if (data.success) {
-        setVideos(data.data.videos)
-        setCategories(data.data.categories || [])
-        // 使用当前筛选结果的长度作为总课程数
-        setTotalCourses(data.data.videos.length)
+        const response = await fetch(`/api/videos?${params.toString()}`)
+        const data = await response.json()
+
+        if (data.success) {
+          videos = data.data.videos
+          setCategories(data.data.categories || [])
+          // 使用当前筛选结果的长度作为总课程数
+          setTotalCourses(data.data.videos.length)
+        }
       }
+
+      // 应用时长筛选（duration单位是秒）
+      if (selectedDuration) {
+        videos = videos.filter((v: any) => {
+          const minutes = Math.floor(v.duration / 60)
+          if (selectedDuration === '0-5') return minutes >= 0 && minutes < 5
+          if (selectedDuration === '5-10') return minutes >= 5 && minutes < 10
+          if (selectedDuration === '10-20') return minutes >= 10 && minutes <= 20
+          if (selectedDuration === '20+') return minutes > 20
+          return true
+        })
+      }
+
+      setVideos(videos)
     } catch (error) {
       console.error('获取视频列表失败:', error)
     } finally {
@@ -231,14 +268,39 @@ export default function HomePage() {
     fetchUserStats()
   }
 
+  const handleShowFavorites = () => {
+    setCurrentView('favorites')
+    setViewTitle('收藏课程')
+    // 清除筛选条件
+    setSelectedDifficulty(null)
+    setSelectedDuration(null)
+    setSelectedCategory(null)
+  }
+
+  const handleShowCompleted = () => {
+    setCurrentView('completed')
+    setViewTitle('已完成课程')
+    // 清除筛选条件
+    setSelectedDifficulty(null)
+    setSelectedDuration(null)
+    setSelectedCategory(null)
+  }
+
+  const handleBackToAll = () => {
+    setCurrentView('all')
+    setViewTitle('全部课程')
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-primary">
       {/* 左侧导航 - 桌面端显示，移动端隐藏 */}
-      <div className="hidden md:block h-full overflow-y-hidden">
+      <div className="hidden md:block h-full">
         <LeftSidebar
           onDifficultyChange={setSelectedDifficulty}
           onDurationChange={setSelectedDuration}
           onCategoryChange={setSelectedCategory}
+          onShowFavorites={handleShowFavorites}
+          onShowCompleted={handleShowCompleted}
           totalCourses={totalCourses}
           favoriteCount={favoriteCount}
           completedCourses={completedCourses}
@@ -317,6 +379,18 @@ export default function HomePage() {
 
         {/* 主内容 */}
         <main className="flex-1 px-4 sm:px-8 py-4 sm:py-8 pb-20 sm:pb-8 overflow-y-auto custom-scrollbar">
+          {/* 视图标题 */}
+          {currentView !== 'all' && (
+            <div className="mb-4 flex items-center gap-3">
+              <button
+                onClick={handleBackToAll}
+                className="p-2 text-gray-300 hover:text-white hover:bg-surface rounded-lg transition-colors"
+              >
+                ← 返回全部课程
+              </button>
+              <h2 className="text-xl font-bold text-white">{viewTitle}</h2>
+            </div>
+          )}
           {/* 搜索框 */}
           {showSearch && (
             <div className="mb-4 animate-fade-in">

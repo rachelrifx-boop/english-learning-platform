@@ -156,6 +156,30 @@ body.light-theme [class*="bg-accent-2"][class*="/20"] {
     scrollbar-color: #2563EB #f3f4f6;
   }
 
+  /* 侧边栏灰色滚动条 */
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #4B5563 !important; /* 灰色 */
+    border-radius: 4px;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #6B7280 !important; /* 稍浅的灰色 */
+  }
+
+  /* Firefox 侧边栏滚动条 */
+  .sidebar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #4B5563 transparent;
+  }
+
   /* 文本截断 */
   .line-clamp-2 {
     overflow: hidden;
