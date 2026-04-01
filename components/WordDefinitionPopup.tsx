@@ -216,13 +216,6 @@ export function WordDefinitionPopup({ word, onClose, onSave, isSaved = false }: 
                 </div>
               )}
 
-              {definition.translation && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-400 mb-1">中文</h4>
-                  <p className="text-accent">{definition.translation}</p>
-                </div>
-              )}
-
               {definition.example && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-400 mb-1">例句</h4>

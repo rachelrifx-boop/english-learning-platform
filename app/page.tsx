@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { VideoCard } from '@/components/VideoCard'
 import { LeftSidebar } from '@/components/LeftSidebar'
@@ -8,8 +8,25 @@ import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileFilterModal } from '@/components/MobileFilterModal'
 import { MobileCheckInModal } from '@/components/MobileCheckInModal'
 import { SettingsDropdown } from '@/components/SettingsDropdown'
-import { LogOut, User, Filter, SlidersHorizontal } from 'lucide-react'
+import { LogOut, User, SlidersHorizontal } from 'lucide-react'
 import Link from 'next/link'
+
+// 防抖 Hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      clearTimeout(handler)
+    }
+  }, [value, delay])
+
+  return debouncedValue
+}
 
 export default function HomePage() {
   const router = useRouter()
@@ -38,9 +55,15 @@ export default function HomePage() {
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
+  // 使用防抖的搜索查询
+  const debouncedSearchQuery = useDebounce(searchQuery, 500)
+
   // 打卡状态
   const [checkedDays, setCheckedDays] = useState<Set<string>>(new Set())
   const [checkedToday, setCheckedToday] = useState(false)
+
+  // 用于跟踪是否已加载的标记
+  const isLoadingRef = useRef(false)
 
   const difficulties = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
   const durations = [
@@ -89,10 +112,11 @@ export default function HomePage() {
     'Documentary': '纪录片'
   }
 
+  // 获取视频列表
   useEffect(() => {
-    fetchUser()
+    if (isLoadingRef.current) return
     fetchVideos()
-  }, [selectedDifficulty, selectedDuration, selectedCategory, searchQuery, currentView])
+  }, [selectedDifficulty, selectedDuration, selectedCategory, debouncedSearchQuery, currentView])
 
   // 当用户信息获取成功后，再获取统计数据和打卡记录
   useEffect(() => {
@@ -115,31 +139,41 @@ export default function HomePage() {
   }
 
   const fetchVideos = async () => {
+    if (isLoadingRef.current) return
+    isLoadingRef.current = true
     setLoading(true)
+
     try {
       let videos: any[] = []
 
       if (currentView === 'favorites') {
         // 获取收藏的视频
-        const response = await fetch('/api/user/favorites')
+        const params = new URLSearchParams()
+        params.append('limit', '1000')
+
+        const response = await fetch(`/api/user/favorites?${params.toString()}`)
         const data = await response.json()
         if (data.success) {
           videos = data.data.videos
         }
       } else if (currentView === 'completed') {
         // 获取已完成的视频
-        const response = await fetch('/api/user/completed')
+        const params = new URLSearchParams()
+        params.append('limit', '1000')
+
+        const response = await fetch(`/api/user/completed?${params.toString()}`)
         const data = await response.json()
         if (data.success) {
           videos = data.data.videos
         }
       } else {
-        // 获取所有视频 - 先获取所有视频，然后在前端筛选时长
+        // 获取所有视频
         const params = new URLSearchParams()
+        params.append('limit', '1000')
         if (selectedDifficulty) params.append('difficulty', selectedDifficulty)
         if (selectedCategory) params.append('category', selectedCategory)
-        // 不在后端筛选时长，在前端筛选以确保准确性
-        if (searchQuery) params.append('search', searchQuery)
+        if (selectedDuration) params.append('duration', selectedDuration)
+        if (debouncedSearchQuery) params.append('search', debouncedSearchQuery)
 
         const response = await fetch(`/api/videos?${params.toString()}`)
         const data = await response.json()
@@ -147,13 +181,12 @@ export default function HomePage() {
         if (data.success) {
           videos = data.data.videos
           setCategories(data.data.categories || [])
-          // 使用当前筛选结果的长度作为总课程数
-          setTotalCourses(data.data.videos.length)
+          setTotalCourses(data.data.pagination?.total || videos.length)
         }
       }
 
-      // 应用时长筛选（duration单位是秒）
-      if (selectedDuration) {
+      // 应用时长筛选（如果后端不支持）
+      if (selectedDuration && currentView === 'all') {
         videos = videos.filter((v: any) => {
           const minutes = Math.floor(v.duration / 60)
           if (selectedDuration === '0-5') return minutes >= 0 && minutes < 5
@@ -169,11 +202,11 @@ export default function HomePage() {
       console.error('获取视频列表失败:', error)
     } finally {
       setLoading(false)
+      isLoadingRef.current = false
     }
   }
 
   const fetchUserStats = async () => {
-    // 只有在用户已登录时才获取统计数据
     if (!user) return
 
     try {
@@ -191,7 +224,6 @@ export default function HomePage() {
   }
 
   const fetchCheckIns = async () => {
-    // 只有在用户已登录时才获取打卡记录
     if (!user) return
 
     try {
@@ -229,7 +261,6 @@ export default function HomePage() {
       const data = await response.json()
 
       if (data.success) {
-        // 刷新打卡记录和统计数据
         await fetchCheckIns()
         await fetchUserStats()
         alert(`打卡成功！已连续学习 ${data.data.streakDays} 天`)
@@ -260,18 +291,23 @@ export default function HomePage() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // 搜索已通过useEffect自动触发
+    // 搜索已通过防抖自动触发
   }
 
-  const handleFavoriteChange = () => {
+  const handleFavoriteChange = useCallback((videoId: string, isFavorited: boolean) => {
+    // 更新本地视频列表中的收藏状态
+    setVideos(prev => prev.map((v: any) =>
+      v.id === videoId ? { ...v, isFavorited } : v
+    ))
     // 刷新用户统计数据
-    fetchUserStats()
-  }
+    if (user) {
+      fetchUserStats()
+    }
+  }, [user])
 
   const handleShowFavorites = () => {
     setCurrentView('favorites')
     setViewTitle('收藏课程')
-    // 清除筛选条件
     setSelectedDifficulty(null)
     setSelectedDuration(null)
     setSelectedCategory(null)
@@ -280,7 +316,6 @@ export default function HomePage() {
   const handleShowCompleted = () => {
     setCurrentView('completed')
     setViewTitle('已完成课程')
-    // 清除筛选条件
     setSelectedDifficulty(null)
     setSelectedDuration(null)
     setSelectedCategory(null)
@@ -290,6 +325,11 @@ export default function HomePage() {
     setCurrentView('all')
     setViewTitle('全部课程')
   }
+
+  // 初始化获取用户信息
+  useEffect(() => {
+    fetchUser()
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-primary">
@@ -416,7 +456,10 @@ export default function HomePage() {
               </form>
               {searchQuery && (
                 <div className="mt-2 text-sm text-gray-400">
-                  搜索结果: <span className="text-accent">{searchQuery}</span>
+                  搜索: <span className="text-accent">{searchQuery}</span>
+                  {debouncedSearchQuery !== searchQuery && (
+                    <span className="ml-2 text-gray-500">输入中...</span>
+                  )}
                   <button
                     onClick={() => {
                       setSearchQuery('')
@@ -458,11 +501,14 @@ export default function HomePage() {
           ) : videos.length === 0 ? (
             <div className="text-center py-20 text-gray-400">
               <p className="text-lg mb-2">
-                {hasActiveFilters ? '没有符合条件的视频' : '暂无视频'}
+                {hasActiveFilters || debouncedSearchQuery ? '没有符合条件的视频' : '暂无视频'}
               </p>
-              {hasActiveFilters && (
+              {(hasActiveFilters || debouncedSearchQuery) && (
                 <button
-                  onClick={clearAllFilters}
+                  onClick={() => {
+                    clearAllFilters()
+                    setSearchQuery('')
+                  }}
                   className="mt-4 px-6 py-2 bg-accent text-white rounded-lg"
                 >
                   清除筛选
@@ -470,11 +516,18 @@ export default function HomePage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-              {videos.map((video: any, index) => (
-                <VideoCard key={video.id} video={video} index={index} onFavoriteChange={handleFavoriteChange} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {videos.map((video: any, index) => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    index={index}
+                    onFavoriteChange={handleFavoriteChange}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </main>
       </div>
