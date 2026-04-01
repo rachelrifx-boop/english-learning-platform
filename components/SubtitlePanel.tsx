@@ -1,14 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Scroll, Play, Book, Star, FileText, Mic, Copy, Volume2, X, Headphones, PenTool, Eye, EyeOff, Edit2, Languages, Printer } from 'lucide-react'
+import { Scroll, Play, Star, FileText, Mic, Copy, Volume2, X, Headphones, PenTool, Eye, EyeOff, Languages, Printer } from 'lucide-react'
 import { VoiceRecorder } from './VoiceRecorder'
-import { SentencePhoneticsDisplay } from './SentencePhonetics'
 import { EnhancedSubtitleHighlight } from './EnhancedSubtitleHighlight'
 import { WordCard, DictionaryEntry } from './WordCard'
 import { IntensiveListeningPanel } from './IntensiveListeningPanel'
 import { DictationPanel } from './DictationPanel'
-import { SubtitleEditor } from './SubtitleEditor'
 import { SubtitleTextRenderer } from './SubtitleTextRenderer'
 import { ChineseSubtitleHighlight } from './ChineseSubtitleHighlight'
 import { HighlightInfo } from './EnhancedSubtitleHighlight'
@@ -31,8 +29,6 @@ interface SubtitlePanelProps {
   subtitleMode?: 'bilingual' | 'en' | 'zh'
   onSubtitleModeChange?: (mode: 'bilingual' | 'en' | 'zh') => void
   onPlay?: () => void
-  onTogglePhonetics?: () => void
-  showPhonetics?: boolean
   onCopy?: () => void
   onToggleFavorite?: (subtitle: SubtitleEntry) => void
   isFavorite?: boolean
@@ -62,9 +58,6 @@ interface SubtitlePanelProps {
   isVideoVisible?: boolean
   onToggleVideoVisibility?: () => void
   fontSize?: number
-  isAdmin?: boolean
-  videoId?: string
-  onSubtitleUpdate?: (subtitleId: number, enText: string, zhText: string) => Promise<void>
   hideHeader?: boolean
   isMobile?: boolean
   mobileFunctionMode?: 'none' | 'follow' | 'dictation'
@@ -79,8 +72,6 @@ export function SubtitlePanel({
   subtitleMode = 'bilingual',
   onSubtitleModeChange,
   onPlay,
-  onTogglePhonetics,
-  showPhonetics,
   onCopy,
   onToggleFavorite,
   isFavorite,
@@ -98,9 +89,6 @@ export function SubtitlePanel({
   isVideoVisible = true,
   onToggleVideoVisibility,
   fontSize = 16,
-  isAdmin = false,
-  videoId,
-  onSubtitleUpdate,
   hideHeader = false,
   isMobile = false,
   mobileFunctionMode = 'none',
@@ -113,7 +101,6 @@ export function SubtitlePanel({
   const [loadingDict, setLoadingDict] = useState(false)
   const [intensiveListeningSubtitle, setIntensiveListeningSubtitle] = useState<SubtitleEntry | null>(null)
   const [dictationSubtitle, setDictationSubtitle] = useState<SubtitleEntry | null>(null)
-  const [editingSubtitle, setEditingSubtitle] = useState<SubtitleEntry | null>(null)
   const [subtitlesVisible, setSubtitlesVisible] = useState(true)
   const [subtitleHighlights, setSubtitleHighlights] = useState<Map<number, HighlightInfo[]>>(new Map())
   const activeSubtitleRef = useRef<HTMLDivElement>(null)
@@ -205,17 +192,6 @@ export function SubtitlePanel({
     // 播放按钮：根据自动滚动状态决定是否暂停
     // 如果自动滚动关闭，则播放完该字幕后暂停
     onSubtitleClick?.(subtitleId, startTime, true, autoScroll ? undefined : endTime)
-  }
-
-  const handleTogglePhonetics = (index: number) => {
-    // 如果点击的是当前展开的字幕，则折叠；否则展开新的
-    if (expandedSubtitle === index) {
-      setExpandedSubtitle(null)
-    } else {
-      setExpandedSubtitle(index)
-    }
-    // 通知父组件显示音标
-    onTogglePhonetics?.()
   }
 
   const handleToggleNotes = (index: number) => {
@@ -388,22 +364,6 @@ export function SubtitlePanel({
                       <Play size={14} />
                     </button>
 
-                    {/* 音标按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleTogglePhonetics(index)
-                      }}
-                      className={`p-1.5 rounded transition-colors ${
-                        isExpanded && showPhonetics
-                          ? 'text-accent bg-accent/10'
-                          : 'text-gray-400 hover:text-accent hover:bg-accent/10'
-                      }`}
-                      title="音标"
-                    >
-                      <Book size={14} />
-                    </button>
-
                     {/* 复制按钮 */}
                     <button
                       onClick={(e) => {
@@ -495,20 +455,6 @@ export function SubtitlePanel({
                     >
                       <PenTool size={14} />
                     </button>
-
-                    {/* 编辑按钮 - 仅管理员可见 */}
-                    {isAdmin && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingSubtitle(subtitle)
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-green-400 hover:bg-green-400/10 rounded transition-colors"
-                        title="编辑字幕"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -541,15 +487,6 @@ export function SubtitlePanel({
                       englishText={subtitle.text.en}
                       englishHighlights={subtitleHighlights.get(subtitle.id) || []}
                       isActive={isActive}
-                    />
-                  </div>
-                )}
-
-                {/* 展开的音标显示 */}
-                {isExpanded && showPhonetics && (
-                  <div className="mt-3 pt-3 border-t border-gray-700">
-                    <SentencePhoneticsDisplay
-                      sentence={subtitle.text.en}
                     />
                   </div>
                 )}
@@ -656,20 +593,6 @@ export function SubtitlePanel({
             />
           </div>
         </div>
-      )}
-
-      {/* 字幕编辑器 - 仅管理员 */}
-      {editingSubtitle && isAdmin && onSubtitleUpdate && (
-        <SubtitleEditor
-          subtitleId={editingSubtitle.id}
-          enText={editingSubtitle.text.en}
-          zhText={editingSubtitle.text.zh}
-          onClose={() => setEditingSubtitle(null)}
-          onSave={async (enText, zhText) => {
-            await onSubtitleUpdate(editingSubtitle.id, enText, zhText)
-            setEditingSubtitle(null)
-          }}
-        />
       )}
     </div>
   )

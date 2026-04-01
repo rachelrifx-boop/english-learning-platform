@@ -304,22 +304,6 @@ export function WordCard({ word, entry, loading, error, onSave, isSaved, onClose
             {/* 分隔线 */}
             <div className="h-px bg-gray-700"></div>
 
-            {/* === 中文翻译区域 === */}
-            {chineseTranslation && (
-              <>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-accent-2 text-xs font-medium">
-                    <Languages size={14} />
-                    <span>中文释义</span>
-                  </div>
-                  <p className="text-white text-base leading-relaxed">{chineseTranslation}</p>
-                </div>
-
-                {/* 分隔线 */}
-                <div className="h-px bg-gray-700"></div>
-              </>
-            )}
-
             {/* === 词义、例句、近义词、反义词 === */}
             {entry.meanings && entry.meanings.length > 0 && entry.meanings.map((meaning, mIndex) => (
               <div key={mIndex} className="space-y-3">
@@ -354,7 +338,6 @@ export function WordCard({ word, entry, loading, error, onSave, isSaved, onClose
                             </p>
                             {def.exampleTranslation && (
                               <p className="text-gray-500 text-sm ml-2">
-                                <Languages size={12} className="inline mr-1 opacity-60" />
                                 {def.exampleTranslation}
                               </p>
                             )}
