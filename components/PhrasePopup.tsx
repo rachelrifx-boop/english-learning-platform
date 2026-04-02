@@ -114,7 +114,6 @@ export function PhrasePopup({ phrase, info, position, onClose }: PhrasePopupProp
                 </p>
                 {/* 中文翻译 */}
                 <p className="text-gray-500 text-sm ml-2">
-                  <Languages size={12} className="inline mr-1 opacity-60" />
                   {example.zh}
                 </p>
               </div>

@@ -33,9 +33,18 @@ interface LeftSidebarProps {
 
 // 话题中文翻译映射
 const categoryTranslations: Record<string, string> = {
+  'Vlog': 'Vlog',
   'Personal Development': '个人成长',
   'Social Skills': '社交技巧',
   'Communication': '沟通技巧',
+  'Psychology': '心理',
+  'TED': 'TED',
+  'Interview': '访谈',
+  'Podcast': '播客',
+  'News': '新闻',
+  'Finance': '财经',
+  'Learning': '学习',
+  // 兼容旧分类
   'Daily Life': '日常生活',
   'Health & Fitness': '健康健身',
   'Business': '商务',
@@ -47,9 +56,6 @@ const categoryTranslations: Record<string, string> = {
   'Culture': '文化',
   'Travel': '旅行',
   'Food & Cooking': '美食烹饪',
-  // 兼容旧分类
-  'Vlog': '视频博客',
-  'Interview': '访谈',
   'Presentation': '演讲',
   'Conversation': '对话',
   'Documentary': '纪录片'
@@ -91,20 +97,17 @@ export function LeftSidebar({
     { label: '20分钟以上', value: '20+' }
   ]
   const categories = [
+    'Vlog',
     'Personal Development',
     'Social Skills',
     'Communication',
-    'Daily Life',
-    'Health & Fitness',
-    'Business',
-    'Career',
-    'Technology',
-    'Education',
-    'Science',
-    'Entertainment',
-    'Culture',
-    'Travel',
-    'Food & Cooking'
+    'Psychology',
+    'TED',
+    'Interview',
+    'Podcast',
+    'News',
+    'Finance',
+    'Learning'
   ]
 
   const handleDifficultyClick = (difficulty: string) => {

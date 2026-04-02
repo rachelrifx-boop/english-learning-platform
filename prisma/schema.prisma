@@ -11,13 +11,13 @@ datasource db {
 }
 
 model User {
-  id           String         @id @default(cuid())
-  email        String         @unique
+  id           String           @id @default(cuid())
+  email        String           @unique
   username     String
   passwordHash String
-  role         String         @default("USER")
+  role         String           @default("USER")
   inviteCodeId String?
-  inviteCode   InviteCode?    @relation(fields: [inviteCodeId], references: [id])
+  inviteCode   InviteCode?      @relation(fields: [inviteCodeId], references: [id])
   words        Word[]
   expressions  Expression[]
   notes        Note[]
@@ -26,7 +26,8 @@ model User {
   favoriteVideos FavoriteVideo[]
   userProgress UserProgress[]
   checkIns     CheckIn[]
-  createdAt    DateTime       @default(now())
+  passwordResets PasswordReset[]
+  createdAt    DateTime         @default(now())
 }
 
 model InviteCode {
@@ -56,6 +57,11 @@ model Video {
   favoriteBy  FavoriteVideo[]
   userProgress UserProgress[]
   createdAt   DateTime        @default(now())
+
+  @@index([difficulty])
+  @@index([category])
+  @@index([createdAt])
+  @@index([displayOrder])
 }
 
 model Subtitle {
@@ -149,6 +155,8 @@ model FavoriteVideo {
   createdAt DateTime @default(now())
 
   @@unique([userId, videoId])
+  @@index([userId])
+  @@index([videoId])
 }
 
 model UserProgress {
@@ -165,6 +173,9 @@ model UserProgress {
   updatedAt       DateTime @updatedAt
 
   @@unique([userId, videoId])
+  @@index([userId])
+  @@index([videoId])
+  @@index([completed])
 }
 
 model CheckIn {
@@ -175,4 +186,14 @@ model CheckIn {
   createdAt DateTime @default(now())
 
   @@unique([userId, date])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

@@ -845,20 +845,17 @@ export default function AdminPage() {
                   className="w-full px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
                 >
                   <option value="">选择分类（可选）</option>
+                  <option value="Vlog">Vlog</option>
                   <option value="Personal Development">个人成长</option>
                   <option value="Social Skills">社交技巧</option>
                   <option value="Communication">沟通技巧</option>
-                  <option value="Daily Life">日常生活</option>
-                  <option value="Health & Fitness">健康健身</option>
-                  <option value="Business">商务</option>
-                  <option value="Career">职业发展</option>
-                  <option value="Technology">科技</option>
-                  <option value="Education">教育</option>
-                  <option value="Science">科学</option>
-                  <option value="Entertainment">娱乐</option>
-                  <option value="Culture">文化</option>
-                  <option value="Travel">旅行</option>
-                  <option value="Food & Cooking">美食烹饪</option>
+                  <option value="Psychology">心理</option>
+                  <option value="TED">TED</option>
+                  <option value="Interview">访谈</option>
+                  <option value="Podcast">播客</option>
+                  <option value="News">新闻</option>
+                  <option value="Finance">财经</option>
+                  <option value="Learning">学习</option>
                 </select>
               </div>
 
@@ -1366,20 +1363,17 @@ export default function AdminPage() {
                     className="w-full px-4 py-2 bg-surface border border-gray-700 rounded-lg text-white focus:outline-none focus:border-accent"
                   >
                     <option value="">选择分类（可选）</option>
+                    <option value="Vlog">Vlog</option>
                     <option value="Personal Development">个人成长</option>
                     <option value="Social Skills">社交技巧</option>
                     <option value="Communication">沟通技巧</option>
-                    <option value="Daily Life">日常生活</option>
-                    <option value="Health & Fitness">健康健身</option>
-                    <option value="Business">商务</option>
-                    <option value="Career">职业发展</option>
-                    <option value="Technology">科技</option>
-                    <option value="Education">教育</option>
-                    <option value="Science">科学</option>
-                    <option value="Entertainment">娱乐</option>
-                    <option value="Culture">文化</option>
-                    <option value="Travel">旅行</option>
-                    <option value="Food & Cooking">美食烹饪</option>
+                    <option value="Psychology">心理</option>
+                    <option value="TED">TED</option>
+                    <option value="Interview">访谈</option>
+                    <option value="Podcast">播客</option>
+                    <option value="News">新闻</option>
+                    <option value="Finance">财经</option>
+                    <option value="Learning">学习</option>
                   </select>
                 </div>
               </div>

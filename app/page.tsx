@@ -30,7 +30,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export default function HomePage() {
   const router = useRouter()
-  const [videos, setVideos] = useState([])
+  const [videos, setVideos] = useState<any[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)

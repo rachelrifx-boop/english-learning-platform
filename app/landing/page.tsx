@@ -390,7 +390,7 @@ export default function LandingPage() {
               <div
                 key={index}
                 className={`group bg-white rounded-2xl p-6 border border-[#E2E8F0] hover:border-[#2563EB] hover:shadow-lg hover:-translate-y-1 transition-all duration-300 animate-on-scroll delay-${(index % 5) * 100}`}
-                ref={(el) => el && observerRefs.current.push(el)}
+                ref={(el) => { if (el) observerRefs.current.push(el) }}
               >
                 <div className="text-4xl mb-4">{feature.emoji}</div>
                 <h3 className="font-heading font-semibold text-lg text-[#0F172A] mb-2">

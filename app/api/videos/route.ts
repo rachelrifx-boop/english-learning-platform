@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     if (token) {
       try {
-        const payload = verifyToken(token)
+        const payload = await verifyToken(token)
         if (payload?.userId) {
           // 批量查询用户的收藏状态（避免 N+1 问题）
           const favorites = await prisma.favoriteVideo.findMany({

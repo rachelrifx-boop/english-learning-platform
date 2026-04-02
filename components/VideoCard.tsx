@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Clock, Play, Heart } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -13,6 +13,7 @@ export interface Video {
   duration: number
   difficulty: string
   category: string | null
+  isFavorited?: boolean // 从服务器获取的收藏状态
 }
 
 // 处理封面 URL，确保通过代理访问 R2 上的文件
@@ -31,7 +32,7 @@ function getCoverUrl(coverPath: string | null): string | null {
 interface VideoCardProps {
   video: Video
   index?: number
-  onFavoriteChange?: () => void
+  onFavoriteChange?: (videoId: string, isFavorited: boolean) => void
 }
 
 const difficultyColors: Record<string, string> = {
@@ -67,27 +68,12 @@ const categoryTranslations: Record<string, string> = {
 }
 
 export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps) {
-  const [isFavorited, setIsFavorited] = useState(false)
+  // 使用从服务器传递过来的收藏状态作为初始值
+  const [isFavorited, setIsFavorited] = useState(video.isFavorited || false)
   const [loading, setLoading] = useState(false)
 
   // 处理封面 URL
   const coverUrl = useMemo(() => getCoverUrl(video.coverPath), [video.coverPath])
-
-  useEffect(() => {
-    checkFavoriteStatus()
-  }, [video.id])
-
-  const checkFavoriteStatus = async () => {
-    try {
-      const response = await fetch(`/api/favorite/check?videoId=${video.id}`)
-      const data = await response.json()
-      if (data.success) {
-        setIsFavorited(data.data.isFavorited)
-      }
-    } catch (error) {
-      console.error('检查收藏状态失败:', error)
-    }
-  }
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -113,7 +99,7 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
 
         if (data.success) {
           setIsFavorited(false)
-          onFavoriteChange?.()
+          onFavoriteChange?.(video.id, false)
         } else {
           alert(data.error || '取消收藏失败')
         }
@@ -128,7 +114,7 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
 
         if (data.success) {
           setIsFavorited(true)
-          onFavoriteChange?.()
+          onFavoriteChange?.(video.id, true)
         } else {
           alert(data.error || '收藏失败')
         }
@@ -156,6 +142,7 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
                 src={coverUrl}
                 alt={video.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                loading="lazy"
               />
             ) : (
               <div className="w-full h-full bg-gradient-primary flex items-center justify-center">

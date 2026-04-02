@@ -62,6 +62,11 @@ interface SubtitlePanelProps {
   isMobile?: boolean
   mobileFunctionMode?: 'none' | 'follow' | 'dictation'
   onPrintSubtitles?: () => void
+  onTogglePhonetics?: () => void
+  showPhonetics?: boolean
+  isAdmin?: boolean
+  videoId?: string
+  onSubtitleUpdate?: (subtitleId: number, enText: string, zhText: string) => Promise<void>
 }
 
 export function SubtitlePanel({
