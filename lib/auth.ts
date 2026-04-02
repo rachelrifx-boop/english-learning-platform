@@ -58,3 +58,20 @@ export async function verifyAdmin(request: NextRequest) {
   }
 }
 
+export function getToken(request: NextRequest): JWTPayload | null {
+  try {
+    const token = request.cookies.get('token')?.value
+    if (!token) return null
+
+    // 解码 JWT（不验证签名，仅获取 payload）
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
+    return payload as JWTPayload
+  } catch (error) {
+    console.error('Get token error:', error)
+    return null
+  }
+}
+
