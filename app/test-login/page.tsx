@@ -30,7 +30,7 @@ export default function TestLoginPage() {
       setResult(JSON.stringify(data, null, 2))
     } catch (error) {
       console.error('错误:', error)
-      setResult('错误: ' + error.message)
+      setResult('错误: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 
@@ -47,7 +47,7 @@ export default function TestLoginPage() {
       const data = await response.json()
       setResult('直接 API 结果:\n' + JSON.stringify(data, null, 2))
     } catch (error) {
-      setResult('错误: ' + error.message)
+      setResult('错误: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 
