@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+
+// R2 公开访问基础 URL
+const R2_PUBLIC_URL = 'https://pub-817feefeeeab4f97a1d44b251d5f9895.r2.dev'
+
+// 获取资源 URL：视频保持代理以支持范围请求，封面等静态资源直接走 R2
+function getResourceUrl(path: string | null): string | null {
+  if (!path) return null
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  // 相对路径转换为 R2 公开 URL
+  return `${R2_PUBLIC_URL}/${path}`
+}
 import { VideoPlayer, VideoPlayerRef } from '@/components/VideoPlayer'
 import { SubtitlePanel, SubtitleEntry } from '@/components/SubtitlePanel'
 import { SubtitleWordHighlight } from '@/components/SubtitleWordHighlight'
@@ -160,10 +171,11 @@ export default function VideoPage() {
       if (data.success) {
         setVideo(data.data.video)
 
-        // 优化：添加视频预加载链接
-        if (data.data.video.filePath) {
+        // 优化：添加视频预加载链接（使用 R2 公开 URL）
+        const videoUrl = getResourceUrl(data.data.video.filePath)
+        if (videoUrl) {
           // 移除已有的预加载链接
-          const existingLink = document.querySelector('link[rel="preload"][as="video"]')
+          const existingLink = document.querySelector('link[rel="preload"][as="fetch"]')
           if (existingLink) {
             existingLink.remove()
           }
@@ -171,10 +183,10 @@ export default function VideoPage() {
           const link = document.createElement('link')
           link.rel = 'preload'
           link.as = 'fetch'
-          link.href = data.data.video.filePath
+          link.href = videoUrl
           link.crossOrigin = 'anonymous'
           document.head.appendChild(link)
-          console.log('[Video] Preload link added:', data.data.video.filePath)
+          console.log('[Video] Preload link added:', videoUrl)
         }
 
         // 翻译视频标题
@@ -968,7 +980,7 @@ export default function VideoPage() {
 
             <VideoPlayer
               ref={mobileVideoPlayerRef}
-              src={video.filePath}
+              src={getResourceUrl(video.filePath) || ''}
               subtitles={video.subtitles || []}
               parsedSubtitles={subtitles}
               onTimeUpdate={handleTimeUpdate}
@@ -1239,7 +1251,7 @@ export default function VideoPage() {
             {/* VideoPlayer组件包含视频播放器和外部控制面板 */}
             <VideoPlayer
               ref={videoPlayerRef}
-              src={video.filePath}
+              src={getResourceUrl(video.filePath) || ''}
               subtitles={video.subtitles || []}
               parsedSubtitles={subtitles}
               onTimeUpdate={handleTimeUpdate}

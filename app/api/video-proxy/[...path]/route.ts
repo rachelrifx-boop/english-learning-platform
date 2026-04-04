@@ -5,12 +5,6 @@ import { join } from 'path'
 
 // 复用 S3Client 实例 - 避免每次请求都创建新连接
 let r2Client: S3Client | null = null
-let r2ClientConfig: {
-  accountId: string
-  accessKeyId: string
-  secretAccessKey: string
-  endpoint: string
-} | null = null
 
 // 初始化 R2 客户端（单例模式）
 function getR2Client() {
@@ -22,21 +16,14 @@ function getR2Client() {
     throw new Error('R2 配置不完整')
   }
 
-  const endpoint = `https://${r2AccountId}.r2.cloudflarestorage.com`
-
-  // 检查配置是否变化，如果没有变化则复用客户端
-  if (
-    r2Client &&
-    r2ClientConfig &&
-    r2ClientConfig.accountId === r2AccountId &&
-    r2ClientConfig.accessKeyId === r2AccessKeyId &&
-    r2ClientConfig.secretAccessKey === r2SecretAccessKey &&
-    r2ClientConfig.endpoint === endpoint
-  ) {
+  // 如果已存在客户端，直接返回
+  if (r2Client) {
     return r2Client
   }
 
   // 创建新的客户端
+  const endpoint = `https://${r2AccountId}.r2.cloudflarestorage.com`
+
   r2Client = new S3Client({
     region: 'auto',
     endpoint,
@@ -44,24 +31,9 @@ function getR2Client() {
       accessKeyId: r2AccessKeyId,
       secretAccessKey: r2SecretAccessKey,
     },
-    // 优化：启用 keep-alive 和连接复用
-    requestHandler: {
-      requestTimeout: 300000, // 5分钟超时
-      httpsAgent: {
-        maxSockets: 50, // 最大连接数
-        keepAlive: true,
-        keepAliveMsecs: 1000,
-      },
-    },
   })
 
-  r2ClientConfig = {
-    accountId: r2AccountId,
-    accessKeyId: r2AccessKeyId,
-    secretAccessKey: r2SecretAccessKey,
-    endpoint,
-  }
-
+  console.log('[Video Proxy] S3Client initialized')
   return r2Client
 }
 
@@ -129,29 +101,23 @@ async function serveLocalFile(relativePath: string, request: NextRequest) {
   const status = start > 0 || end < fileSize - 1 ? 206 : 200
 
   const headers: Record<string, string> = {
-    'Content-Type': 'video/mp4',
+    'Content-Type': getContentType(relativePath),
     'Content-Length': contentLength.toString(),
-    // 优化：更激进的缓存策略
     'Cache-Control': 'public, max-age=31536000, immutable',
     'Accept-Ranges': 'bytes',
-    // 优化：添加预加载提示
     'X-Content-Type-Options': 'nosniff',
-    // 优化：添加 CORS 头，允许浏览器预加载
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-    'Access-Control-Allow-Headers': 'Range',
-    'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
   }
 
   if (status === 206) {
     headers['Content-Range'] = `bytes ${start}-${end}/${fileSize}`
   }
 
-  // 优化：设置流的高水位线，提高传输效率
+  // 使用较大的缓冲区
   const stream = createReadStream(fullPath, {
     start,
     end,
-    highWaterMark: 64 * 1024 // 64KB 缓冲区
+    highWaterMark: 256 * 1024 // 256KB 缓冲区
   })
 
   return new Response(stream as any, {
@@ -185,66 +151,94 @@ async function serveR2File(path: string, request: NextRequest) {
         start: parseInt(matches[1], 10),
         end: matches[2] ? parseInt(matches[2], 10) : undefined
       }
-      console.log('[Video Proxy] Range request:', range)
     }
   }
 
-  const command = new GetObjectCommand({
-    Bucket: r2BucketName,
-    Key: path,
-    Range: range ? `bytes=${range.start}-${range.end ?? ''}` : undefined,
-  })
+  console.log('[Video Proxy] Fetching from R2:', path, range ? `Range: ${range.start}-${range.end ?? ''}` : 'Full file')
 
-  const response = await client.send(command)
-  const body = response.Body
-
-  if (!body) {
-    return new Response(JSON.stringify({ error: '视频文件不存在' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' }
+  try {
+    const command = new GetObjectCommand({
+      Bucket: r2BucketName,
+      Key: path,
+      Range: range ? `bytes=${range.start}-${range.end ?? ''}` : undefined,
     })
+
+    const response = await client.send(command)
+    const body = response.Body
+
+    if (!body) {
+      return new Response(JSON.stringify({ error: '视频文件不存在' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    console.log('[Video Proxy] R2 response received, ContentLength:', response.ContentLength)
+
+    // 转换为 Web Stream
+    const webStream = body.transformToWebStream()
+
+    // 获取内容长度
+    const contentLength = response.ContentLength
+    const contentRange = response.ContentRange
+
+    // 如果是范围请求，返回 206 状态码
+    const status = contentRange ? 206 : 200
+
+    const headers: Record<string, string> = {
+      'Content-Type': response.ContentType || getContentType(path),
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Accept-Ranges': 'bytes',
+      'X-Content-Type-Options': 'nosniff',
+      'Access-Control-Allow-Origin': '*',
+    }
+
+    if (contentLength !== undefined) {
+      headers['Content-Length'] = contentLength.toString()
+    }
+
+    if (contentRange) {
+      headers['Content-Range'] = contentRange
+    }
+
+    console.log('[Video Proxy] Streaming response, status:', status)
+
+    // 返回流式响应
+    return new Response(webStream, {
+      status,
+      headers,
+    })
+  } catch (error: any) {
+    console.error('[Video Proxy] R2 fetch error:', error)
+    throw error
   }
-
-  // 转换为 Web Stream
-  const webStream = body.transformToWebStream()
-
-  // 获取内容长度
-  const contentLength = response.ContentLength
-  const contentRange = response.ContentRange
-
-  // 如果是范围请求，返回 206 状态码
-  const status = contentRange ? 206 : 200
-
-  const headers: Record<string, string> = {
-    'Content-Type': response.ContentType || 'video/mp4',
-    // 优化：更激进的缓存策略
-    'Cache-Control': 'public, max-age=31536000, immutable',
-    'Accept-Ranges': 'bytes',
-    // 优化：添加预加载提示
-    'X-Content-Type-Options': 'nosniff',
-    // 优化：添加 CORS 头
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-    'Access-Control-Allow-Headers': 'Range',
-    'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
-  }
-
-  if (contentLength !== undefined) {
-    headers['Content-Length'] = contentLength.toString()
-  }
-
-  if (contentRange) {
-    headers['Content-Range'] = contentRange
-  }
-
-  // 返回流式响应
-  return new Response(webStream, {
-    status,
-    headers,
-  })
 }
 
-// 优化：添加 OPTIONS 处理，支持 CORS 预检
+// 获取文件内容类型
+function getContentType(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'mp4':
+      return 'video/mp4'
+    case 'webm':
+      return 'video/webm'
+    case 'ogg':
+      return 'video/ogg'
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'gif':
+      return 'image/gif'
+    case 'webp':
+      return 'image/webp'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+// 添加 OPTIONS 处理，支持 CORS 预检
 export async function OPTIONS(request: NextRequest) {
   return new Response(null, {
     status: 204,
@@ -257,7 +251,7 @@ export async function OPTIONS(request: NextRequest) {
   })
 }
 
-// 优化：添加 HEAD 处理，支持快速获取文件信息
+// 添加 HEAD 处理，支持快速获取文件信息
 export async function HEAD(request: NextRequest, { params }: { params: { path: string[] } }) {
   try {
     const path = params.path.join('/')
@@ -272,7 +266,7 @@ export async function HEAD(request: NextRequest, { params }: { params: { path: s
       return new Response(null, {
         status: 200,
         headers: {
-          'Content-Type': 'video/mp4',
+          'Content-Type': getContentType(path),
           'Content-Length': stats.size.toString(),
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'public, max-age=31536000, immutable',
@@ -295,7 +289,7 @@ export async function HEAD(request: NextRequest, { params }: { params: { path: s
     return new Response(null, {
       status: 200,
       headers: {
-        'Content-Type': response.ContentType || 'video/mp4',
+        'Content-Type': response.ContentType || getContentType(path),
         'Content-Length': response.ContentLength?.toString() || '0',
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=31536000, immutable',
