@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Scroll, Play, Star, FileText, Mic, Copy, Volume2, X, Headphones, PenTool, Eye, EyeOff, Languages, Printer } from 'lucide-react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { EnhancedSubtitleHighlight } from './EnhancedSubtitleHighlight'
@@ -20,6 +20,10 @@ export interface SubtitleEntry {
     zh: string
   }
 }
+
+// 虚拟滚动配置
+const VISIBLE_ITEM_COUNT = 15 // 可见区域的字幕数量
+const BUFFER_ITEM_COUNT = 5   // 上下缓冲区的字幕数量
 
 interface SubtitlePanelProps {
   subtitles: SubtitleEntry[]
@@ -109,11 +113,54 @@ export function SubtitlePanel({
   const [subtitlesVisible, setSubtitlesVisible] = useState(true)
   const [subtitleHighlights, setSubtitleHighlights] = useState<Map<number, HighlightInfo[]>>(new Map())
   const activeSubtitleRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // 找到当前激活的字幕
-  const activeIndex = subtitles && subtitles.length > 0 ? subtitles.findIndex(
-    (sub) => currentTime >= sub.startTime / 1000 && currentTime <= sub.endTime / 1000
-  ) : -1
+  // 找到当前激活的字幕（使用 useMemo 优化）
+  const activeIndex = useMemo(() => {
+    if (!subtitles || subtitles.length === 0) return -1
+    return subtitles.findIndex(
+      (sub) => currentTime >= sub.startTime / 1000 && currentTime <= sub.endTime / 1000
+    )
+  }, [subtitles, currentTime])
+
+  // 虚拟滚动：计算需要渲染的字幕范围
+  const visibleRange = useMemo(() => {
+    if (!subtitles || subtitles.length === 0) {
+      return { start: 0, end: 0 }
+    }
+
+    // 如果字幕数量少于可见数量，全部渲染
+    if (subtitles.length <= VISIBLE_ITEM_COUNT + BUFFER_ITEM_COUNT * 2) {
+      return { start: 0, end: subtitles.length }
+    }
+
+    // 如果有激活的字幕，以它为中心计算范围
+    if (activeIndex !== -1) {
+      const start = Math.max(0, activeIndex - VISIBLE_ITEM_COUNT / 2 - BUFFER_ITEM_COUNT)
+      const end = Math.min(subtitles.length, activeIndex + VISIBLE_ITEM_COUNT / 2 + BUFFER_ITEM_COUNT)
+      return { start: Math.floor(start), end: Math.ceil(end) }
+    }
+
+    // 没有激活字幕时，渲染开头部分
+    return { start: 0, end: VISIBLE_ITEM_COUNT + BUFFER_ITEM_COUNT * 2 }
+  }, [subtitles, activeIndex])
+
+  // 虚拟滚动：获取需要渲染的字幕列表
+  const visibleSubtitles = useMemo(() => {
+    if (!subtitles || subtitles.length === 0) return []
+    const { start, end } = visibleRange
+
+    // 创建占位空间
+    const topSpace = start * 80 // 假设每个字幕项平均高度 80px
+    const bottomSpace = (subtitles.length - end) * 80
+
+    return {
+      subtitles: subtitles.slice(start, end),
+      topSpace,
+      bottomSpace,
+      startIndex: start
+    }
+  }, [subtitles, visibleRange])
 
   // 处理字幕高亮信息变化
   const handleHighlightInfoChange = (subtitleId: number, highlights: HighlightInfo[]) => {
@@ -323,27 +370,37 @@ export function SubtitlePanel({
         </div>
       )}
 
-      {/* 字幕列表 */}
+      {/* 字幕列表 - 使用虚拟滚动优化 */}
       {subtitlesVisible && (
-        <div className={isMobile ? "flex-1 overflow-y-scroll custom-scrollbar" : "h-[80vh] overflow-y-scroll custom-scrollbar"}>
-          <div className="p-4 space-y-3">
-            {subtitles.map((subtitle, index) => {
-            const isActive = index === activeIndex
-            const isExpanded = expandedSubtitle === index
-            const isSubtitleSaved = savedExpressions?.has(subtitle.text.en) || false
-            // 听写模式下隐藏对应的字幕行
-            const isInDictation = dictationSubtitle?.id === subtitle.id
+        <div
+          ref={containerRef}
+          className={isMobile ? "flex-1 overflow-y-scroll custom-scrollbar" : "h-[80vh] overflow-y-scroll custom-scrollbar"}
+        >
+          <div className="p-4">
+            {/* 上方占位空间 */}
+            {visibleSubtitles.topSpace > 0 && (
+              <div style={{ height: `${visibleSubtitles.topSpace}px` }} />
+            )}
 
-            if (isInDictation) return null
+            <div className="space-y-3">
+              {visibleSubtitles.subtitles.map((subtitle) => {
+                const actualIndex = visibleSubtitles.startIndex + subtitles.indexOf(subtitle)
+                const isActive = actualIndex === activeIndex
+                const isExpanded = expandedSubtitle === actualIndex
+                const isSubtitleSaved = savedExpressions?.has(subtitle.text.en) || false
+                // 听写模式下隐藏对应的字幕行
+                const isInDictation = dictationSubtitle?.id === subtitle.id
 
-            return (
-              <div
-                key={subtitle.id}
-                ref={isActive ? activeSubtitleRef : null}
-                className={`rounded-lg transition-all ${
-                  isActive ? 'bg-[#4F8EF7]/20 border border-[#4F8EF7]/30' : 'bg-surface'
-                }`}
-              >
+                if (isInDictation) return null
+
+                return (
+                  <div
+                    key={subtitle.id}
+                    ref={isActive ? activeSubtitleRef : null}
+                    className={`rounded-lg transition-all ${
+                      isActive ? 'bg-[#4F8EF7]/20 border border-[#4F8EF7]/30' : 'bg-surface'
+                    }`}
+                  >
                 {/* 字幕主体 */}
                 <div className="p-4">
                 {/* 顶部行：时间戳 + 功能图标 */}
@@ -533,11 +590,17 @@ export function SubtitlePanel({
                   </div>
                 )}
               </div>
+              </div>
+                )
+              })}
             </div>
-          )
-        })}
+
+            {/* 下方占位空间 */}
+            {visibleSubtitles.bottomSpace > 0 && (
+              <div style={{ height: `${visibleSubtitles.bottomSpace}px` }} />
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* 单词释义弹窗 */}

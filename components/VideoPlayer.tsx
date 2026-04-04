@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
+import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react'
 import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, Settings, Minimize, SkipBack, SkipForward, Repeat, Repeat1, Clock } from 'lucide-react'
 import type { SubtitleEntry } from './SubtitlePanel'
 
@@ -68,8 +68,51 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
   const [showLoopMenu, setShowLoopMenu] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(true)
   const [hasStartedLoading, setHasStartedLoading] = useState(false)
+  const [lastSubtitleIndex, setLastSubtitleIndex] = useState(-1) // 缓存上次的字幕索引
 
   const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+  // 使用二分查找优化字幕查找
+  const findSubtitleIndex = useCallback((time: number) => {
+    if (!parsedSubtitles || parsedSubtitles.length === 0) return -1
+
+    // 从上次索引开始搜索（利用时间局部性）
+    const lastIdx = lastSubtitleIndex
+    if (lastIdx >= 0 && lastIdx < parsedSubtitles.length) {
+      const lastSub = parsedSubtitles[lastIdx]
+      if (time >= lastSub.startTime / 1000 && time <= lastSub.endTime / 1000) {
+        return lastIdx
+      }
+      // 检查下一个字幕
+      if (lastIdx + 1 < parsedSubtitles.length) {
+        const nextSub = parsedSubtitles[lastIdx + 1]
+        if (time >= nextSub.startTime / 1000 && time <= nextSub.endTime / 1000) {
+          return lastIdx + 1
+        }
+      }
+    }
+
+    // 二分查找
+    let left = 0
+    let right = parsedSubtitles.length - 1
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2)
+      const sub = parsedSubtitles[mid]
+      const start = sub.startTime / 1000
+      const end = sub.endTime / 1000
+
+      if (time >= start && time <= end) {
+        return mid
+      } else if (time < start) {
+        right = mid - 1
+      } else {
+        left = mid + 1
+      }
+    }
+
+    return -1
+  }, [parsedSubtitles, lastSubtitleIndex])
 
   // 安全的播放函数，处理 AbortError
   const safePlay = async (video: HTMLVideoElement) => {
@@ -126,13 +169,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     setShowControls(prev => !prev)
   }, [])
 
-  // 查找当前字幕索引
-  const getCurrentSubtitleIndex = () => {
-    if (!parsedSubtitles || parsedSubtitles.length === 0) return -1
-    return parsedSubtitles.findIndex(
-      (s) => currentTime >= s.startTime / 1000 && currentTime <= s.endTime / 1000
-    )
-  }
+  // 查找当前字幕索引（使用优化的查找函数）
+  const getCurrentSubtitleIndex = useCallback(() => {
+    return findSubtitleIndex(currentTime)
+  }, [findSubtitleIndex, currentTime])
 
   useEffect(() => {
     const video = videoRef.current
@@ -149,15 +189,20 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         setBuffered(bufferedEnd)
       }
 
-      // 查找当前字幕
+      // 使用优化的查找函数查找当前字幕
       if (parsedSubtitles && parsedSubtitles.length > 0) {
-        const subtitle = parsedSubtitles.find(
-          (s) => time >= s.startTime / 1000 && time <= s.endTime / 1000
-        )
+        const subtitleIdx = findSubtitleIndex(time)
 
-        if (subtitle && subtitle !== currentSubtitle) {
-          setCurrentSubtitle(subtitle)
-          onSubtitleChange?.(subtitle)
+        // 只在字幕变化时更新
+        if (subtitleIdx !== lastSubtitleIndex) {
+          setLastSubtitleIndex(subtitleIdx)
+          if (subtitleIdx !== -1) {
+            const subtitle = parsedSubtitles[subtitleIdx]
+            if (subtitle !== currentSubtitle) {
+              setCurrentSubtitle(subtitle)
+              onSubtitleChange?.(subtitle)
+            }
+          }
         }
       }
 
@@ -198,7 +243,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
       video.removeEventListener('canplay', handleCanPlay)
       video.removeEventListener('ended', handleEnded)
     }
-  }, [loopMode, loopStart, loopEnd, onTimeUpdate, parsedSubtitles, onSubtitleChange, currentSubtitle])
+  }, [loopMode, loopStart, loopEnd, onTimeUpdate, findSubtitleIndex, lastSubtitleIndex, onSubtitleChange, currentSubtitle])
 
   // 键盘快捷键支持
   useEffect(() => {
@@ -456,7 +501,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         <video
           ref={videoRef}
           src={src}
-          preload="auto"
+          preload="metadata"
           className="w-full h-full object-contain"
           onClick={(e) => {
             e.stopPropagation() // 阻止事件冒泡到容器
