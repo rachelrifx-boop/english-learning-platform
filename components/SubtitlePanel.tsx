@@ -123,27 +123,14 @@ export function SubtitlePanel({
     )
   }, [subtitles, currentTime])
 
-  // 虚拟滚动：计算需要渲染的字幕范围
+  // 禁用虚拟滚动，渲染所有字幕以避免显示问题
   const visibleRange = useMemo(() => {
     if (!subtitles || subtitles.length === 0) {
       return { start: 0, end: 0 }
     }
-
-    // 如果字幕数量少于可见数量，全部渲染
-    if (subtitles.length <= VISIBLE_ITEM_COUNT + BUFFER_ITEM_COUNT * 2) {
-      return { start: 0, end: subtitles.length }
-    }
-
-    // 如果有激活的字幕，以它为中心计算范围
-    if (activeIndex !== -1) {
-      const start = Math.max(0, activeIndex - VISIBLE_ITEM_COUNT / 2 - BUFFER_ITEM_COUNT)
-      const end = Math.min(subtitles.length, activeIndex + VISIBLE_ITEM_COUNT / 2 + BUFFER_ITEM_COUNT)
-      return { start: Math.floor(start), end: Math.ceil(end) }
-    }
-
-    // 没有激活字幕时，渲染开头部分
-    return { start: 0, end: VISIBLE_ITEM_COUNT + BUFFER_ITEM_COUNT * 2 }
-  }, [subtitles, activeIndex])
+    // 渲染所有字幕
+    return { start: 0, end: subtitles.length }
+  }, [subtitles])
 
   // 虚拟滚动：获取需要渲染的字幕列表
   const visibleSubtitles = useMemo(() => {
