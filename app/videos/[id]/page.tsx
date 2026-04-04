@@ -160,6 +160,23 @@ export default function VideoPage() {
       if (data.success) {
         setVideo(data.data.video)
 
+        // 优化：添加视频预加载链接
+        if (data.data.video.filePath) {
+          // 移除已有的预加载链接
+          const existingLink = document.querySelector('link[rel="preload"][as="video"]')
+          if (existingLink) {
+            existingLink.remove()
+          }
+          // 添加新的预加载链接
+          const link = document.createElement('link')
+          link.rel = 'preload'
+          link.as = 'fetch'
+          link.href = data.data.video.filePath
+          link.crossOrigin = 'anonymous'
+          document.head.appendChild(link)
+          console.log('[Video] Preload link added:', data.data.video.filePath)
+        }
+
         // 翻译视频标题
         if (data.data.video.title) {
           fetchTranslation(data.data.video.title).then(setVideoTitleTranslation)

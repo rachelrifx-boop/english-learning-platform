@@ -3,6 +3,68 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { createReadStream, existsSync, statSync } from 'fs'
 import { join } from 'path'
 
+// 复用 S3Client 实例 - 避免每次请求都创建新连接
+let r2Client: S3Client | null = null
+let r2ClientConfig: {
+  accountId: string
+  accessKeyId: string
+  secretAccessKey: string
+  endpoint: string
+} | null = null
+
+// 初始化 R2 客户端（单例模式）
+function getR2Client() {
+  const r2AccountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
+  const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+
+  if (!r2AccountId || !r2AccessKeyId || !r2SecretAccessKey) {
+    throw new Error('R2 配置不完整')
+  }
+
+  const endpoint = `https://${r2AccountId}.r2.cloudflarestorage.com`
+
+  // 检查配置是否变化，如果没有变化则复用客户端
+  if (
+    r2Client &&
+    r2ClientConfig &&
+    r2ClientConfig.accountId === r2AccountId &&
+    r2ClientConfig.accessKeyId === r2AccessKeyId &&
+    r2ClientConfig.secretAccessKey === r2SecretAccessKey &&
+    r2ClientConfig.endpoint === endpoint
+  ) {
+    return r2Client
+  }
+
+  // 创建新的客户端
+  r2Client = new S3Client({
+    region: 'auto',
+    endpoint,
+    credentials: {
+      accessKeyId: r2AccessKeyId,
+      secretAccessKey: r2SecretAccessKey,
+    },
+    // 优化：启用 keep-alive 和连接复用
+    requestHandler: {
+      requestTimeout: 300000, // 5分钟超时
+      httpsAgent: {
+        maxSockets: 50, // 最大连接数
+        keepAlive: true,
+        keepAliveMsecs: 1000,
+      },
+    },
+  })
+
+  r2ClientConfig = {
+    accountId: r2AccountId,
+    accessKeyId: r2AccessKeyId,
+    secretAccessKey: r2SecretAccessKey,
+    endpoint,
+  }
+
+  return r2Client
+}
+
 // 从 R2 或本地代理视频 - 支持流式传输和范围请求
 export async function GET(
   request: NextRequest,
@@ -69,15 +131,28 @@ async function serveLocalFile(relativePath: string, request: NextRequest) {
   const headers: Record<string, string> = {
     'Content-Type': 'video/mp4',
     'Content-Length': contentLength.toString(),
-    'Cache-Control': 'public, max-age=31536000',
+    // 优化：更激进的缓存策略
+    'Cache-Control': 'public, max-age=31536000, immutable',
     'Accept-Ranges': 'bytes',
+    // 优化：添加预加载提示
+    'X-Content-Type-Options': 'nosniff',
+    // 优化：添加 CORS 头，允许浏览器预加载
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+    'Access-Control-Allow-Headers': 'Range',
+    'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
   }
 
   if (status === 206) {
     headers['Content-Range'] = `bytes ${start}-${end}/${fileSize}`
   }
 
-  const stream = createReadStream(fullPath, { start, end })
+  // 优化：设置流的高水位线，提高传输效率
+  const stream = createReadStream(fullPath, {
+    start,
+    end,
+    highWaterMark: 64 * 1024 // 64KB 缓冲区
+  })
 
   return new Response(stream as any, {
     status,
@@ -87,13 +162,13 @@ async function serveLocalFile(relativePath: string, request: NextRequest) {
 
 // 从 R2 获取文件
 async function serveR2File(path: string, request: NextRequest) {
-  const r2AccountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID
-  const r2AccessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
-  const r2SecretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
   const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'english-learning-videos'
 
-  if (!r2AccountId || !r2AccessKeyId || !r2SecretAccessKey) {
-    return new Response(JSON.stringify({ error: 'R2 配置不完整' }), {
+  let client: S3Client
+  try {
+    client = getR2Client()
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     })
@@ -114,22 +189,13 @@ async function serveR2File(path: string, request: NextRequest) {
     }
   }
 
-  const r2Client = new S3Client({
-    region: 'auto',
-    endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: r2AccessKeyId,
-      secretAccessKey: r2SecretAccessKey,
-    },
-  })
-
   const command = new GetObjectCommand({
     Bucket: r2BucketName,
     Key: path,
     Range: range ? `bytes=${range.start}-${range.end ?? ''}` : undefined,
   })
 
-  const response = await r2Client.send(command)
+  const response = await client.send(command)
   const body = response.Body
 
   if (!body) {
@@ -151,8 +217,16 @@ async function serveR2File(path: string, request: NextRequest) {
 
   const headers: Record<string, string> = {
     'Content-Type': response.ContentType || 'video/mp4',
-    'Cache-Control': 'public, max-age=31536000',
+    // 优化：更激进的缓存策略
+    'Cache-Control': 'public, max-age=31536000, immutable',
     'Accept-Ranges': 'bytes',
+    // 优化：添加预加载提示
+    'X-Content-Type-Options': 'nosniff',
+    // 优化：添加 CORS 头
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+    'Access-Control-Allow-Headers': 'Range',
+    'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
   }
 
   if (contentLength !== undefined) {
@@ -168,4 +242,67 @@ async function serveR2File(path: string, request: NextRequest) {
     status,
     headers,
   })
+}
+
+// 优化：添加 OPTIONS 处理，支持 CORS 预检
+export async function OPTIONS(request: NextRequest) {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range',
+      'Access-Control-Max-Age': '86400',
+    },
+  })
+}
+
+// 优化：添加 HEAD 处理，支持快速获取文件信息
+export async function HEAD(request: NextRequest, { params }: { params: { path: string[] } }) {
+  try {
+    const path = params.path.join('/')
+
+    // 本地文件
+    if (path.startsWith('uploads/')) {
+      const fullPath = join(process.cwd(), 'public', path)
+      if (!existsSync(fullPath)) {
+        return new Response(null, { status: 404 })
+      }
+      const stats = statSync(fullPath)
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Content-Type': 'video/mp4',
+          'Content-Length': stats.size.toString(),
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*',
+        },
+      })
+    }
+
+    // R2 文件
+    const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'english-learning-videos'
+    const client = getR2Client()
+
+    const command = new GetObjectCommand({
+      Bucket: r2BucketName,
+      Key: path,
+    })
+
+    const response = await client.send(command)
+
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Content-Type': response.ContentType || 'video/mp4',
+        'Content-Length': response.ContentLength?.toString() || '0',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*',
+      },
+    })
+  } catch (error: any) {
+    return new Response(null, { status: 404 })
+  }
 }

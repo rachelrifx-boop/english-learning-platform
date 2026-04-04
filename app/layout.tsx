@@ -21,6 +21,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className="dark" suppressHydrationWarning>
+      <head>
+        {/* 优化：预连接到视频存储域名，加速视频加载 */}
+        <link rel="preconnect" href="https://cknvuclkzgylbmksfkfs.r2.cloudflarestorage.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://cknvuclkzgylbmksfkfs.r2.cloudflarestorage.com" />
+      </head>
       <body className={`${heading.variable} font-heading antialiased`}>
         <ThemeProvider>
           {children}

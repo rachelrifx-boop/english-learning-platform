@@ -20,6 +20,8 @@ interface VideoPlayerProps {
   onLoopModeChange?: (mode: 'none' | 'all' | 'ab') => void
   hideControls?: boolean
   showBasicControls?: boolean
+  // 优化：添加预加载策略选项
+  preloadStrategy?: 'none' | 'metadata' | 'auto'
 }
 
 export interface VideoPlayerRef {
@@ -42,6 +44,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
   onLoopModeChange,
   hideControls = false,
   showBasicControls = false,
+  // 优化：默认使用 auto 预加载策略
+  preloadStrategy = 'auto',
 }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -501,8 +505,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         <video
           ref={videoRef}
           src={src}
-          preload="metadata"
+          preload={preloadStrategy}
           className="w-full h-full object-contain"
+          // 优化：启用硬件加速
+          style={{ willChange: 'transform' }}
           onClick={(e) => {
             e.stopPropagation() // 阻止事件冒泡到容器
             togglePlay()
