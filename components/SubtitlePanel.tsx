@@ -147,7 +147,8 @@ export function SubtitlePanel({
 
   // 虚拟滚动：获取需要渲染的字幕列表
   const visibleSubtitles = useMemo(() => {
-    if (!subtitles || subtitles.length === 0) return []
+    const emptyResult = { subtitles: [], topSpace: 0, bottomSpace: 0, startIndex: 0 }
+    if (!subtitles || subtitles.length === 0) return emptyResult
     const { start, end } = visibleRange
 
     // 创建占位空间
