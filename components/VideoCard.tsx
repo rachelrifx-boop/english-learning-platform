@@ -16,10 +16,7 @@ export interface Video {
   isFavorited?: boolean // 从服务器获取的收藏状态
 }
 
-// R2 公开访问基础 URL
-const R2_PUBLIC_URL = 'https://pub-817feefeeeab4f97a1d44b251d5f9895.r2.dev'
-
-// 处理封面 URL，直接使用 R2 公开 URL 加速加载
+// 处理封面 URL，通过代理访问 R2 上的文件
 function getCoverUrl(coverPath: string | null): string | null {
   if (!coverPath) return null
 
@@ -28,8 +25,8 @@ function getCoverUrl(coverPath: string | null): string | null {
     return coverPath
   }
 
-  // 直接使用 R2 公开 URL，不经过代理
-  return `${R2_PUBLIC_URL}/${coverPath}`
+  // 通过代理访问（支持缓存）
+  return `/api/video-proxy/${coverPath}`
 }
 
 interface VideoCardProps {
