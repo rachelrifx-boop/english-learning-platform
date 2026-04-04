@@ -8,6 +8,20 @@ const nextConfig = {
     // 在生产构建时禁用 TypeScript 类型检查警告
     ignoreBuildErrors: false,
   },
+  // 图片域名配置 - 支持 R2 直接访问和本地代理
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.r2.cloudflarestorage.com',
+        pathname: '/**',
+      },
+    ],
+    // 允许本地 API 代理的图片
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'inline',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+  },
   experimental: {
     // 增加 API 路由超时时间（字幕生成需要较长时间）
     serverActionsBodySizeLimit: '50mb',

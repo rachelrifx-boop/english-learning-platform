@@ -16,7 +16,7 @@ export interface Video {
   isFavorited?: boolean // 从服务器获取的收藏状态
 }
 
-// 处理封面 URL，通过代理访问 R2 上的文件
+// 处理封面 URL - 使用代理访问（支持缓存和认证）
 function getCoverUrl(coverPath: string | null): string | null {
   if (!coverPath) return null
 
@@ -25,7 +25,7 @@ function getCoverUrl(coverPath: string | null): string | null {
     return coverPath
   }
 
-  // 通过代理访问（支持缓存）
+  // 通过代理访问 R2（支持缓存和正确认证）
   return `/api/video-proxy/${coverPath}`
 }
 
@@ -71,6 +71,7 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
   // 使用从服务器传递过来的收藏状态作为初始值
   const [isFavorited, setIsFavorited] = useState(video.isFavorited || false)
   const [loading, setLoading] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
 
   // 处理封面 URL
   const coverUrl = useMemo(() => getCoverUrl(video.coverPath), [video.coverPath])
@@ -136,14 +137,24 @@ export function VideoCard({ video, index = 0, onFavoriteChange }: VideoCardProps
       <Link href={`/videos/${video.id}`}>
         <div className="bg-surface-light rounded-xl overflow-hidden hover:ring-2 hover:ring-accent transition-all group cursor-pointer">
           {/* 封面 */}
-          <div className="relative aspect-video bg-surface">
+          <div className="relative aspect-video bg-surface overflow-hidden">
             {coverUrl ? (
-              <img
-                src={coverUrl}
-                alt={video.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                loading="lazy"
-              />
+              <>
+                {/* 加载占位符 - 骨架屏 */}
+                {!imageLoaded && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-surface via-surface-light to-surface animate-pulse" />
+                )}
+                {/* 图片 - 使用原生 img 标签配合懒加载，避免 Next.js Image 优化问题 */}
+                <img
+                  src={coverUrl}
+                  alt={video.title}
+                  className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ${
+                    imageLoaded ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  loading={index < 4 ? 'eager' : 'lazy'}
+                  onLoad={() => setImageLoaded(true)}
+                />
+              </>
             ) : (
               <div className="w-full h-full bg-gradient-primary flex items-center justify-center">
                 <Play size={48} className="text-white/50" />
