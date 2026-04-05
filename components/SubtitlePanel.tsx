@@ -446,7 +446,7 @@ export function SubtitlePanel({
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleToggleNotes(index)
+                        handleToggleNotes(actualIndex)
                       }}
                       className={`p-1.5 rounded transition-colors ${
                         isExpanded && showNotes
