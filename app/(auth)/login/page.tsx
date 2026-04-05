@@ -1,17 +1,26 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // 检查 URL 参数，显示邀请码过期提示
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    if (errorParam === 'invite_expired') {
+      setError('您的邀请码已过期，请联系管理员获取新邀请码')
+    }
+  }, [searchParams])
 
   const handleSubmit = async () => {
     // 验证必填字段

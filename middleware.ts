@@ -20,6 +20,34 @@ const adminRoutes = ['/admin']
 // 定义认证路由（已登录用户不能访问，会重定向到首页）
 const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/sign-in']
 
+// 检查用户邀请码是否过期
+async function checkInviteCodeExpired(userId: string): Promise<boolean> {
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { inviteCode: true }
+    })
+
+    // 如果没有邀请码或者是管理员，不过期
+    if (!user?.inviteCode || user.role === 'ADMIN') {
+      return false
+    }
+
+    // 检查邀请码是否有过期时间且已过期
+    const invite = user.inviteCode
+    if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+      console.log(`[Middleware] Invite code expired: ${invite.code}`)
+      return true
+    }
+
+    return false
+  } catch (error) {
+    console.error('[Middleware] Error checking invite code:', error)
+    return false
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const token = request.cookies.get('token')?.value
@@ -53,9 +81,25 @@ export async function middleware(request: NextRequest) {
     return pathname.startsWith(route)
   })
   console.log(`[Middleware] isProtectedRoute: ${isProtectedRoute}, hasUser: ${!!user}`)
-  if (isProtectedRoute && !user) {
-    console.log(`[Middleware] Redirecting to /login`)
-    return NextResponse.redirect(new URL('/login', request.url))
+
+  // 如果访问受保护路由，检查用户和邀请码状态
+  if (isProtectedRoute) {
+    if (!user) {
+      console.log(`[Middleware] Redirecting to /login`)
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    // 检查邀请码是否过期（非管理员用户）
+    if (user.role !== 'ADMIN') {
+      const isExpired = await checkInviteCodeExpired(user.userId)
+      if (isExpired) {
+        console.log(`[Middleware] Invite code expired, redirecting to login`)
+        // 清除过期的 token，强制重新登录
+        const response = NextResponse.redirect(new URL('/login?error=invite_expired', request.url))
+        response.cookies.delete('token')
+        return response
+      }
+    }
   }
 
   // 检查是否是认证路由

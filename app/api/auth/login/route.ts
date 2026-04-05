@@ -34,9 +34,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 查找用户
+    // 查找用户并关联邀请码信息
     const user = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
+      include: { inviteCode: true }
     })
 
     if (!user) {
@@ -48,6 +49,18 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[LOGIN] 用户存在:', user.username)
+
+    // 检查用户使用的邀请码是否过期（跳过管理员和第一个用户）
+    if (user.inviteCode && user.role !== 'ADMIN') {
+      const invite = user.inviteCode
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+        console.log('[LOGIN] 邀请码已过期:', invite.code)
+        return NextResponse.json(
+          { success: false, error: '您的邀请码已过期，请联系管理员获取新邀请码' },
+          { status: 403 }
+        )
+      }
+    }
 
     // 验证密码
     const isValid = await verifyPassword(password, user.passwordHash)
