@@ -2,12 +2,23 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 
-// 定义需要保护的路由
-const protectedRoutes = ['/', '/admin', '/vocabulary', '/favorites', '/completed']
+// 定义需要保护的路由（所有内容页面都需要登录）
+const protectedRoutes = [
+  '/',              // 首页/视频列表
+  '/videos',        // 视频详情页
+  '/admin',         // 管理后台
+  '/vocabulary',    // 词汇页面
+  '/favorites',     // 收藏页面
+  '/completed',     // 已完成课程
+  '/settings',      // 设置页面
+  '/notes',         // 笔记页面
+  '/feedback',      // 反馈页面
+  '/landing'        // 着陆页（如果存在）
+]
 // 定义需要管理员权限的路由
 const adminRoutes = ['/admin']
-// 定义认证路由（已登录用户不能访问）
-const authRoutes = ['/login', '/register']
+// 定义认证路由（已登录用户不能访问，会重定向到首页）
+const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password', '/sign-in']
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
