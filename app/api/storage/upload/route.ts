@@ -226,36 +226,19 @@ async function uploadToR2Direct(file: File, folder: string) {
       }
     })
   } catch (error: any) {
-    console.error('[R2 UPLOAD] 失败:', error.message)
+    console.error('[R2 UPLOAD] 上传失败:', error.message)
 
-    // 如果是网络问题，尝试保存到本地作为降级方案
-    console.log('[R2 UPLOAD] R2 上传失败，尝试保存到本地...')
-
-    try {
-      const localDir = path.join(process.cwd(), 'public', 'uploads', folder)
-      if (!existsSync(localDir)) {
-        await mkdir(localDir, { recursive: true })
-      }
-
-      const localPath = path.join(localDir, fileName)
-      await writeFile(localPath, buffer)
-
-      console.log('[R2 UPLOAD] 本地保存成功:', localPath)
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          path: `uploads/${folder}/${fileName}`,
-          url: `uploads/${folder}/${fileName}`,
-          storage: 'local',
-          duration,
-          warning: 'R2 上传失败，已保存到本地'
-        }
-      })
-    } catch (localError) {
-      console.error('[R2 UPLOAD] 本地保存也失败:', localError)
-      throw error
-    }
+    // 直接返回错误，不再降级到本地
+    // 避免生产环境出现无法访问的本地文件
+    return NextResponse.json(
+      {
+        success: false,
+        error: '上传到云存储失败，请检查网络连接后重试',
+        details: error.message,
+        code: error.name || 'UPLOAD_FAILED'
+      },
+      { status: 503 }
+    )
   }
 }
 
