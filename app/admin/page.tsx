@@ -554,90 +554,49 @@ export default function AdminPage() {
     }
   }
 
-  // 为视频生成封面（从第10秒截取，避免黑屏）
-  const handleGenerateCover = async (video: Video) => {
-    if (!confirm(`确定要为视频 "${video.title}" 重新生成封面吗？\n\n系统会从视频第10秒截取帧作为封面（避免黑屏/淡入问题）。`)) {
-      return
-    }
-
+  // 为视频上传自定义封面
+  const handleUploadCover = async (video: Video, file: File) => {
     setGeneratingCover(true)
     setGeneratingCoverVideoId(video.id)
 
     try {
-      console.log('[GENERATE COVER] 开始生成封面，视频:', video.title, '路径:', video.filePath)
+      console.log('[UPLOAD COVER] 开始上传封面，视频:', video.title)
 
-      const response = await fetch('/api/admin/extract-cover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl: video.filePath })
-      })
-
-      console.log('[GENERATE COVER] extract-cover 响应状态:', response.status)
-
-      // 检查响应是否为 JSON
-      const contentType = response.headers.get('content-type')
-      console.log('[GENERATE COVER] 响应类型:', contentType)
-
-      if (!response.ok) {
-        const text = await response.text()
-        console.error('[GENERATE COVER] API 错误响应:', text)
-        alert('生成封面失败：HTTP ' + response.status)
+      // 上传封面到存储
+      const coverResult = await uploadFile(file, 'covers')
+      if (coverResult.error || !coverResult.url) {
+        alert(`封面上传失败: ${coverResult.error}`)
         return
       }
 
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text()
-        console.error('[GENERATE COVER] 非 JSON 响应:', text.substring(0, 200))
-        alert('生成封面失败：服务器返回非 JSON 响应')
-        return
-      }
-
-      const data = await response.json()
-      console.log('[GENERATE COVER] 封面提取结果:', data)
-
-      if (!data.success) {
-        alert(data.error || '生成封面失败')
-        return
-      }
+      console.log('[UPLOAD COVER] 封面上传成功:', coverResult.url)
 
       // 更新视频的封面
-      console.log('[GENERATE COVER] 开始更新视频封面:', data.data.coverUrl)
       const updateResponse = await fetch(`/api/admin/videos/${video.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coverPath: data.data.coverUrl })
+        body: JSON.stringify({ coverPath: coverResult.url })
       })
-
-      console.log('[GENERATE COVER] 更新视频响应状态:', updateResponse.status)
 
       if (!updateResponse.ok) {
         const text = await updateResponse.text()
-        console.error('[GENERATE COVER] 更新视频 API 错误:', text)
-        alert('封面生成成功，但更新视频失败：HTTP ' + updateResponse.status)
-        return
-      }
-
-      const updateContentType = updateResponse.headers.get('content-type')
-      if (!updateContentType || !updateContentType.includes('application/json')) {
-        const text = await updateResponse.text()
-        console.error('[GENERATE COVER] 更新视频非 JSON 响应:', text.substring(0, 200))
-        alert('封面生成成功，但更新视频失败：服务器返回非 JSON 响应')
+        console.error('[UPLOAD COVER] 更新视频 API 错误:', text)
+        alert('封面上传成功，但更新视频失败：HTTP ' + updateResponse.status)
         return
       }
 
       const updateData = await updateResponse.json()
 
       if (!updateData.success) {
-        alert('封面生成成功，但更新视频失败：' + (updateData.error || '未知错误'))
+        alert('封面上传成功，但更新视频失败：' + (updateData.error || '未知错误'))
         return
       }
 
-      alert('封面生成成功！')
-
+      alert('封面上传成功！')
       fetchVideos()
     } catch (error: any) {
-      console.error('生成封面失败:', error)
-      alert('生成封面失败：' + (error.message || '请稍后重试'))
+      console.error('上传封面失败:', error)
+      alert('上传封面失败：' + (error.message || '请稍后重试'))
     } finally {
       setGeneratingCover(false)
       setGeneratingCoverVideoId(null)
@@ -1058,14 +1017,24 @@ export default function AdminPage() {
                       编辑
                     </button>
                   )}
-                  <button
-                    onClick={() => handleGenerateCover(video)}
-                    disabled={generatingCover && generatingCoverVideoId === video.id}
-                    className="px-3 py-2 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="重新生成封面"
+                  <label
+                    className="px-3 py-2 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    title="上传封面图"
                   >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={generatingCover && generatingCoverVideoId === video.id}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          handleUploadCover(video, file)
+                        }
+                      }}
+                    />
                     <ImagePlus size={16} className={generatingCover && generatingCoverVideoId === video.id ? 'animate-pulse' : ''} />
-                  </button>
+                  </label>
                   <button
                     onClick={() => handleDeleteVideo(video.id)}
                     className="px-3 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
