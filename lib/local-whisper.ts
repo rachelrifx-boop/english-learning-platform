@@ -43,7 +43,8 @@ export async function generateSubtitlesWithLocalWhisper(
       // 启动 Python 进程
       // 将 Windows 路径的正斜杠确保正确传递给 Python
       const normalizedAudioPath = audioPath.replace(/\\/g, '/')
-      const python = spawn('python', [scriptPath, normalizedAudioPath, config.modelId], {
+      const pythonPath = process.env.PYTHON_PATH || 'C:\\Program Files\\Python311\\python.exe'
+      const python = spawn(pythonPath, [scriptPath, normalizedAudioPath, config.modelId], {
         env,
         stdio: ['ignore', 'pipe', 'pipe']
       })

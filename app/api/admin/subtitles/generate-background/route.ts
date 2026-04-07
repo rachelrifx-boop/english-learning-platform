@@ -354,7 +354,8 @@ function runWhisper(audioPath: string, modelSize: string): Promise<string> {
       HF_ENDPOINT: 'https://hf-mirror.com'
     }
 
-    const python = spawn('python', [scriptPath, audioPath, modelSize], {
+    const pythonPath = process.env.PYTHON_PATH || 'C:\\Program Files\\Python311\\python.exe'
+    const python = spawn(pythonPath, [scriptPath, audioPath, modelSize], {
       env,
       stdio: ['ignore', 'pipe', 'pipe']
     })
