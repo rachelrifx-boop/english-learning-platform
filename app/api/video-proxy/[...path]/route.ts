@@ -126,8 +126,24 @@ async function serveLocalFile(relativePath: string, request: NextRequest) {
   })
 }
 
+// R2 公开访问域名（配置为环境变量）
+const R2_PUBLIC_DOMAIN = process.env.R2_PUBLIC_DOMAIN || 'https://pub-19276f1d0a9a4421b2cf6b1081eca0d5.r2.dev'
+
 // 从 R2 获取文件
 async function serveR2File(path: string, request: NextRequest) {
+  // 如果配置了R2公开域名，直接302重定向，不占用Vercel流量
+  if (R2_PUBLIC_DOMAIN && !path.startsWith('covers/')) {
+    const directUrl = `${R2_PUBLIC_DOMAIN}/${path}`
+    console.log('[Video Proxy] 302重定向到R2直链:', directUrl)
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': directUrl,
+        'Cache-Control': 'public, max-age=3600',
+      }
+    })
+  }
+
   const r2BucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'english-learning-videos'
 
   let client: S3Client

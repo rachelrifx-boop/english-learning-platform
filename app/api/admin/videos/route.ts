@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { parseSubtitle, mergeSubtitles } from '@/lib/subtitle-parser'
 import { analyzeDifficulty } from '@/lib/difficulty-analyzer'
 import { extractAndUploadCover } from '@/lib/video-processor'
+import { autoTranscodeVideo, detectVideoCodec, isBrowserCompatible } from '@/lib/video-transcoder'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -199,19 +200,22 @@ export async function POST(request: NextRequest) {
 
       // 自动封面生成功能已禁用 - 如需封面，请手动上传
       // 原因：FFmpeg从R2下载大视频文件截取封面耗时过长，影响上传体验
-      // if (!sanitizedCoverUrl) {
-      //   console.log('[UPLOAD] 未提供封面，开始自动生成...')
-      //   const autoCoverUrl = await extractAndUploadCover(videoUrl)
-      //   if (autoCoverUrl) {
-      //     await prisma.$executeRawUnsafe(`
-      //       UPDATE "Video" SET "coverPath" = '${autoCoverUrl.replace(/'/g, "''")}' WHERE id = '${videoId}'
-      //     `)
-      //     videoRecord.coverPath = autoCoverUrl
-      //     console.log('[UPLOAD] 自动封面生成成功:', autoCoverUrl)
-      //   } else {
-      //     console.log('[UPLOAD] 自动封面生成失败，将继续使用默认封面')
-      //   }
-      // }
+
+      // 自动转码为非H.264格式的视频（后台异步执行）
+      console.log('[UPLOAD] 启动视频格式检测/转码任务...')
+      // 使用 setImmediate 让转码在后台执行，不阻塞响应
+      setImmediate(async () => {
+        try {
+          const transcodeResult = await autoTranscodeVideo(videoUrl)
+          if (transcodeResult.success) {
+            console.log('[UPLOAD] 转码任务完成:', transcodeResult.message)
+          } else {
+            console.error('[UPLOAD] 转码任务失败:', transcodeResult.error)
+          }
+        } catch (err) {
+          console.error('[UPLOAD] 转码任务异常:', err)
+        }
+      })
     } catch (error: any) {
       console.error('[UPLOAD] 创建视频记录失败:', error)
       console.error('[UPLOAD] Error details:', {
