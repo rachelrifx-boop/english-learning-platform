@@ -128,38 +128,17 @@ export default function AdminPage() {
         return
       }
 
-      setUploadProgress(65)
-      setUploadStatus('视频上传成功，正在生成封面...')
-
-      // 2. 自动截取视频首帧作为封面（如果没有手动上传封面）
+      // 2. 处理封面（仅手动上传，已禁用自动截取）
       let coverUrl: string | null = null
       if (files.cover) {
-        // 使用用户上传的封面
+        setUploadProgress(65)
         setUploadStatus('正在上传封面...')
         const coverResult = await uploadFile(files.cover, 'covers')
         if (!coverResult.error && coverResult.url) {
           coverUrl = coverResult.url
         }
-      } else {
-        // 自动截取视频首帧
-        setUploadStatus('正在自动截取视频首帧...')
-        try {
-          const coverResponse = await fetch('/api/admin/extract-cover', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl: videoResult.url })
-          })
-          const coverData = await coverResponse.json()
-          if (coverData.success && coverData.data.coverUrl) {
-            coverUrl = coverData.data.coverUrl
-            console.log('[UPLOAD] 自动封面生成成功:', coverUrl)
-          } else {
-            console.warn('[UPLOAD] 自动封面生成失败，将使用默认封面')
-          }
-        } catch (error) {
-          console.warn('[UPLOAD] 自动封面生成失败:', error)
-        }
       }
+      // 自动封面截取已禁用 - 如需封面请在上传前手动选择
 
       setUploadProgress(75)
       setUploadStatus('正在上传字幕...')
@@ -833,8 +812,8 @@ export default function AdminPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  封面图片（可选）
-                  <span className="text-gray-500 ml-2">留空则自动截取视频首帧</span>
+                  封面图片
+                  <span className="text-gray-500 ml-2">如不选择则显示默认封面</span>
                 </label>
                 <input
                   type="file"

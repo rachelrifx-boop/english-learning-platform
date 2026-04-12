@@ -20,12 +20,46 @@ export interface UploadResult {
  * @param onProgress 上传进度回调
  * @returns 上传结果
  */
+// 从本地视频文件获取时长（客户端）
+function getVideoDurationFromFile(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src)
+      console.log('[Storage] 客户端获取视频时长:', video.duration, '秒')
+      resolve(Math.round(video.duration))
+    }
+
+    video.onerror = () => {
+      console.warn('[Storage] 客户端获取视频时长失败')
+      resolve(null)
+    }
+
+    // 设置超时
+    setTimeout(() => {
+      URL.revokeObjectURL(video.src)
+      resolve(null)
+    }, 30000)
+
+    video.src = URL.createObjectURL(file)
+  })
+}
+
 export async function uploadFile(
   file: File,
   folder: string = 'videos',
   onProgress?: (progress: number) => void
 ): Promise<UploadResult> {
   console.log('[Storage] 开始上传文件:', file.name, '大小:', (file.size / 1024 / 1024).toFixed(2), 'MB')
+
+  // 对于视频文件，先在客户端获取时长
+  let clientDuration: number | null = null
+  if (file.type.startsWith('video/') || file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
+    console.log('[Storage] 视频文件，先在客户端获取时长...')
+    clientDuration = await getVideoDurationFromFile(file)
+  }
 
   // 使用服务器端上传 API（会根据文件大小自动选择方式）
   try {
@@ -90,13 +124,18 @@ export async function uploadFile(
     // 如果返回预签名 URL，使用客户端直接上传
     if (result.usePresignedUrl) {
       console.log('[Storage] 使用预签名 URL 客户端直接上传')
-      return await uploadToPresignedUrl(result.presignedUrl, file, onProgress)
+      const uploadResult = await uploadToPresignedUrl(result.presignedUrl, file, onProgress)
+      // 使用客户端获取的时长（如果是视频文件）
+      if (clientDuration) {
+        uploadResult.duration = clientDuration
+      }
+      return uploadResult
     }
 
     return {
       url: result.url,
       key: result.key,
-      duration: result.duration
+      duration: result.duration || clientDuration
     }
   } catch (serverUploadError) {
     console.warn('[Storage] 服务器端上传失败，尝试 R2 直接上传:', serverUploadError)
@@ -109,7 +148,8 @@ export async function uploadFile(
       }
       return {
         url: result.url,
-        key: result.key
+        key: result.key,
+        duration: clientDuration || undefined
       }
     } catch (r2Error) {
       // 如果 R2 也失败，尝试 Supabase（仅小文件）

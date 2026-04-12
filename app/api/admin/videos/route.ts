@@ -197,20 +197,21 @@ export async function POST(request: NextRequest) {
       videoRecord = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM "Video" WHERE id = '${videoId}'`).then(r => r[0])
       console.log('[UPLOAD] 视频记录已创建:', videoRecord.id)
 
-      // 如果没有提供封面，自动生成
-      if (!sanitizedCoverUrl) {
-        console.log('[UPLOAD] 未提供封面，开始自动生成...')
-        const autoCoverUrl = await extractAndUploadCover(videoUrl)
-        if (autoCoverUrl) {
-          await prisma.$executeRawUnsafe(`
-            UPDATE "Video" SET "coverPath" = '${autoCoverUrl.replace(/'/g, "''")}' WHERE id = '${videoId}'
-          `)
-          videoRecord.coverPath = autoCoverUrl
-          console.log('[UPLOAD] 自动封面生成成功:', autoCoverUrl)
-        } else {
-          console.log('[UPLOAD] 自动封面生成失败，将继续使用默认封面')
-        }
-      }
+      // 自动封面生成功能已禁用 - 如需封面，请手动上传
+      // 原因：FFmpeg从R2下载大视频文件截取封面耗时过长，影响上传体验
+      // if (!sanitizedCoverUrl) {
+      //   console.log('[UPLOAD] 未提供封面，开始自动生成...')
+      //   const autoCoverUrl = await extractAndUploadCover(videoUrl)
+      //   if (autoCoverUrl) {
+      //     await prisma.$executeRawUnsafe(`
+      //       UPDATE "Video" SET "coverPath" = '${autoCoverUrl.replace(/'/g, "''")}' WHERE id = '${videoId}'
+      //     `)
+      //     videoRecord.coverPath = autoCoverUrl
+      //     console.log('[UPLOAD] 自动封面生成成功:', autoCoverUrl)
+      //   } else {
+      //     console.log('[UPLOAD] 自动封面生成失败，将继续使用默认封面')
+      //   }
+      // }
     } catch (error: any) {
       console.error('[UPLOAD] 创建视频记录失败:', error)
       console.error('[UPLOAD] Error details:', {
